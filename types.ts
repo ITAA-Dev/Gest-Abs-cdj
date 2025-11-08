@@ -1,7 +1,18 @@
+// FIX: Define the application's data types based on usage in constants.ts.
+// This resolves errors related to missing type definitions.
+
 export type AbsenceType = 'A' | 'AJ' | 'R' | 'Aut' | 'D';
 
-export interface BehaviorIncident {
-  date: string; // YYYY-MM-DD
+export interface Absence {
+  [sessionId: string]: AbsenceType;
+}
+
+export interface Absences {
+  [date: string]: Absence;
+}
+
+export interface Behavior {
+  date: string;
   motif: string;
   sanction: string;
 }
@@ -11,15 +22,10 @@ export interface Trainee {
   cef: string;
   firstName: string;
   lastName: string;
-  birthDate: string; // YYYY-MM-DD
+  birthDate: string;
   groupId: string;
-  absences: {
-    [date: string]: { // YYYY-MM-DD
-      [sessionId: string]: AbsenceType;
-    };
-  };
-  behavior?: BehaviorIncident[];
-  dropoutDate?: string; // YYYY-MM-DD
+  absences: Absences;
+  behavior: Behavior[];
 }
 
 export interface Group {
@@ -39,15 +45,4 @@ export interface Filiere {
 export interface Level {
   id: string;
   name: string;
-}
-
-export interface TrainingData {
-  levels: Level[];
-  filieres: Filiere[];
-  groups: Group[];
-  trainees: Trainee[];
-}
-
-export interface ArchivedData {
-  [year: string]: TrainingData;
 }
