@@ -1,5 +1,6 @@
 // FIX: Corrected the React import statement to properly import React and its hooks. This resolves all subsequent "Cannot find name" errors in the file.
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { initialLevels, initialFilieres, initialGroups, initialTrainees, DAYS, SESSIONS, SESSION_DURATION, RETARD_VALUE, ABSENCE_TYPES } from './constants';
 import type { Trainee, Group, Filiere, Level, TrainingData, ArchivedData, AbsenceType, BehaviorIncident } from './types';
 import { supabaseClient } from './supabaseClient';
@@ -265,36 +266,69 @@ const convertExcelDate = (excelDate: number) => {
 // --- UI STYLES ---
 const inputStyle = "w-full p-2 border border-gray-300 rounded-md bg-white shadow-sm focus:ring-blue-500 focus:border-blue-500 transition";
 
-// --- CONFIRMATION MODAL COMPONENT ---
-// FIX: Refactored to use a type alias for props to improve clarity and resolve potential type inference issues with the 'children' prop.
-type ConfirmationModalProps = {
+// --- ALERT MODAL COMPONENT ---
+type AlertModalType = 'success' | 'error' | 'confirm' | 'info';
+type AlertModalProps = {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: () => void;
+    onConfirm?: () => void;
     title: string;
-    // FIX: Made the 'children' prop optional to resolve a TypeScript error on line 527.
-    // The compiler was incorrectly reporting it as missing, even though it was provided via JSX.
-    children?: React.ReactNode;
+    type: AlertModalType;
+    children: React.ReactNode;
 };
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, children }: ConfirmationModalProps) => {
+
+const AlertModal = ({ isOpen, onClose, onConfirm, title, type, children }: AlertModalProps) => {
     if (!isOpen) return null;
 
+    const theme = {
+        success: { iconColor: 'text-green-500', buttonBg: 'bg-green-600', buttonHoverBg: 'hover:bg-green-700' },
+        error: { iconColor: 'text-red-500', buttonBg: 'bg-red-600', buttonHoverBg: 'hover:bg-red-700' },
+        confirm: { iconColor: 'text-yellow-500', buttonBg: 'bg-red-600', buttonHoverBg: 'hover:bg-red-700' },
+        info: { iconColor: 'text-blue-500', buttonBg: 'bg-blue-600', buttonHoverBg: 'hover:bg-blue-700' },
+    };
+
+    const currentTheme = theme[type];
+
+    const Icon = () => {
+        switch(type) {
+            case 'success': return <svg xmlns="http://www.w3.org/2000/svg" className={`h-10 w-10 ${currentTheme.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+            case 'error': return <svg xmlns="http://www.w3.org/2000/svg" className={`h-10 w-10 ${currentTheme.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+            case 'confirm': return <svg xmlns="http://www.w3.org/2000/svg" className={`h-10 w-10 ${currentTheme.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>;
+            default: return <svg xmlns="http://www.w3.org/2000/svg" className={`h-10 w-10 ${currentTheme.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+        }
+    };
+
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" aria-modal="true" role="dialog">
-            <div className="bg-white rounded-lg shadow-xl p-6 m-4 max-w-sm w-full">
-                <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-                <div className="mt-2 text-sm text-gray-600">
-                    {children}
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center" aria-modal="true" role="dialog">
+            <div className="bg-white rounded-lg shadow-xl p-6 m-4 max-w-md w-full transform transition-all duration-300 ease-out scale-95 opacity-0 animate-fade-in-scale">
+                <div className="flex flex-col items-center text-center">
+                    <Icon />
+                    <h3 className="text-xl font-bold text-gray-900 mt-4">{title}</h3>
+                    <div className="mt-2 text-sm text-gray-600">
+                        {children}
+                    </div>
                 </div>
-                <div className="mt-6 flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 font-semibold">
-                        Annuler
-                    </button>
-                    <button onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-semibold">
-                        Confirmer
+                <div className={`mt-6 flex ${type === 'confirm' ? 'justify-between' : 'justify-center'} space-x-3`}>
+                    {type === 'confirm' && (
+                        <button onClick={onClose} className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 font-semibold transition-colors">
+                            Annuler
+                        </button>
+                    )}
+                    <button 
+                        onClick={onConfirm || onClose} 
+                        className={`w-full px-4 py-2 text-white rounded-md font-semibold transition-colors ${currentTheme.buttonBg} ${currentTheme.buttonHoverBg}`}
+                    >
+                        {type === 'confirm' ? 'Confirmer' : 'OK'}
                     </button>
                 </div>
             </div>
+            <style>{`
+                @keyframes fade-in-scale {
+                    from { opacity: 0; transform: scale(0.95); }
+                    to { opacity: 1; transform: scale(1); }
+                }
+                .animate-fade-in-scale { animation: fade-in-scale 0.2s forwards; }
+            `}</style>
         </div>
     );
 };
@@ -376,9 +410,24 @@ function App() {
   return <MainApplication session={session} />;
 }
 
+type GlobalFilters = {
+    year: string;
+    groupId: string;
+    month: string;
+    week: string;
+    traineeId: string;
+};
+
+type AlertState = {
+    isOpen: boolean;
+    title: string;
+    message: React.ReactNode;
+    type: AlertModalType;
+    onConfirm?: () => void;
+};
+
 const MainApplication = ({ session }: { session: Session }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [currentTrainingYear, setCurrentTrainingYear] = useState('2023-2024');
   
   const [allData, setAllData] = useState<TrainingData>({
     levels: initialLevels,
@@ -389,36 +438,54 @@ const MainApplication = ({ session }: { session: Session }) => {
 
   const [archivedData, setArchivedData] = useState<ArchivedData>({});
   
-  const [saisieFilters, setSaisieFilters] = useState({
+  const [globalFilters, setGlobalFilters] = useState<GlobalFilters>({
+      year: '2023-2024',
       groupId: '',
       month: '',
-      week: ''
+      week: '',
+      traineeId: ''
   });
 
   const [establishmentInfo, setEstablishmentInfo] = useState({
     name: 'Mon Établissement de Formation',
     logo: null as string | null, // Store as base64
   });
+  
+  const [alertState, setAlertState] = useState<AlertState>({ isOpen: false, title: '', message: '', type: 'info' });
 
   const userRole = session.user.user_metadata.role || 'assistant_admin';
+  const [tutorEmail, setTutorEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchEstablishmentInfo = async () => {
-        let establishmentData: { name: string; logo_base64: string } | null = null;
+    const fetchContextData = async () => {
         const userId = session.user.id;
         
+        // Logic to fetch tutor email for assistants
+        if (userRole === 'assistant_admin') {
+             const { data, error } = await supabaseClient
+                .from('assistants')
+                // This special syntax fetches the email from the related `auth.users` table
+                .select('super_admin:created_by ( email )')
+                .eq('user_id', userId)
+                .single();
+
+            if (error) {
+                console.error("Error fetching tutor email:", error);
+            } else if (data && data.super_admin) {
+                setTutorEmail((data.super_admin as any).email);
+            }
+        }
+
+        // Logic to fetch establishment info, which is needed by both roles
+        let establishmentData: { name: string; logo_base64: string } | null = null;
         if (userRole === 'super_admin') {
             const { data, error } = await supabaseClient
                 .from('establishments')
                 .select('name, logo_base64')
                 .eq('user_id', userId)
                 .single();
-            
-            if (error && error.code !== 'PGRST116') { // PGRST116: "The query returned no rows"
-                 console.error("Error fetching establishment info:", error);
-            } else {
-                establishmentData = data;
-            }
+            if (error && error.code !== 'PGRST116') console.error("Error fetching establishment info:", error);
+            else establishmentData = data;
         } else { // assistant_admin
             const { data: assistantData, error: assistantError } = await supabaseClient
                 .from('assistants')
@@ -431,19 +498,14 @@ const MainApplication = ({ session }: { session: Session }) => {
                 return;
             }
 
-            if (assistantData && assistantData.created_by) {
-                const superAdminId = assistantData.created_by;
+            if (assistantData?.created_by) {
                 const { data, error } = await supabaseClient
                     .from('establishments')
                     .select('name, logo_base64')
-                    .eq('user_id', superAdminId)
+                    .eq('user_id', assistantData.created_by)
                     .single();
-
-                if (error && error.code !== 'PGRST116') {
-                     console.error("Error fetching establishment info:", error);
-                } else {
-                    establishmentData = data;
-                }
+                if (error && error.code !== 'PGRST116') console.error("Error fetching establishment info:", error);
+                else establishmentData = data;
             }
         }
         
@@ -455,18 +517,18 @@ const MainApplication = ({ session }: { session: Session }) => {
         }
     };
 
-    fetchEstablishmentInfo();
+    fetchContextData();
   }, [session.user.id, userRole]);
 
 
   const trainingYears = useMemo(() => {
-    const years = new Set([currentTrainingYear, ...Object.keys(archivedData)]);
+    const years = new Set([globalFilters.year, ...Object.keys(archivedData)]);
     allData.groups.forEach(group => years.add(group.trainingYear));
     return Array.from(years).sort((a, b) => b.localeCompare(a));
-  }, [currentTrainingYear, archivedData, allData.groups]);
+  }, [globalFilters.year, archivedData, allData.groups]);
 
   const currentYearData = useMemo(() => {
-    const currentGroups = allData.groups.filter(g => g.trainingYear === currentTrainingYear);
+    const currentGroups = allData.groups.filter(g => g.trainingYear === globalFilters.year);
     const currentGroupIds = new Set(currentGroups.map(g => g.id));
     return {
       levels: allData.levels,
@@ -474,40 +536,56 @@ const MainApplication = ({ session }: { session: Session }) => {
       groups: currentGroups,
       trainees: allData.trainees.filter(t => currentGroupIds.has(t.groupId)),
     };
-  }, [allData, currentTrainingYear]);
+  }, [allData, globalFilters.year]);
     
-  const allYearsData = useMemo(() => ({...archivedData, [currentTrainingYear]: currentYearData}), [archivedData, currentTrainingYear, currentYearData]);
+  const allYearsData = useMemo(() => ({...archivedData, [globalFilters.year]: currentYearData}), [archivedData, globalFilters.year, currentYearData]);
 
-  const [activeView, setActiveView] = useState('dashboard');
-  const handleSetActiveTab = (tab: string) => {
-    setActiveTab(tab);
-    // Add logic for Paramètres tab if needed
-    if (tab === 'donnees') {
-      // Potentially set a sub-tab or default view for Paramètres
+  // Effect to manage filter consistency
+  useEffect(() => {
+    const currentGroupsForYear = allData.groups.filter(g => g.trainingYear === globalFilters.year);
+    const groupExists = currentGroupsForYear.some(g => g.id === globalFilters.groupId);
+
+    if (currentGroupsForYear.length > 0 && !groupExists) {
+        setGlobalFilters(f => ({ ...f, groupId: currentGroupsForYear[0].id, traineeId: '' }));
+    } else if (currentGroupsForYear.length === 0 && globalFilters.groupId) {
+        setGlobalFilters(f => ({ ...f, groupId: '', traineeId: '' }));
     }
-  };
+  }, [globalFilters.year, allData.groups]);
+
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800">
-      <Header activeTab={activeTab} setActiveTab={handleSetActiveTab} establishmentInfo={establishmentInfo} session={session} />
+      <Header activeTab={activeTab} setActiveTab={setActiveTab} establishmentInfo={establishmentInfo} session={session} tutorEmail={tutorEmail} />
       <main className="p-4 sm:p-6 md:p-8">
-        {activeTab === 'dashboard' && <DashboardView allYearsData={allYearsData} />}
-        {activeTab === 'saisie' && <AbsenceSaisieView data={currentYearData} setAllData={setAllData} availableYears={trainingYears} currentYear={currentTrainingYear} setCurrentYear={setCurrentTrainingYear} saisieFilters={saisieFilters} setSaisieFilters={setSaisieFilters} />}
+        {activeTab === 'dashboard' && <DashboardView allYearsData={allYearsData} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} />}
+        {/* FIX: Pass `trainingYears` prop to `AbsenceSaisieView` to make it available within the component. */}
+        {activeTab === 'saisie' && <AbsenceSaisieView data={currentYearData} setAllData={setAllData} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} trainingYears={trainingYears} />}
         {activeTab === 'assiduite' && <AssiduiteView allYearsData={allYearsData} />}
-        {activeTab === 'comportement' && <ComportementView allYearsData={allYearsData} setAllData={setAllData} setArchivedData={setArchivedData} currentTrainingYear={currentTrainingYear} />}
-        {activeTab === 'donnees_personnelles' && <DonneesPersonnellesView allYearsData={allYearsData} establishmentInfo={establishmentInfo} />}
-        {activeTab === 'historique' && <HistoryView allYearsData={allYearsData} establishmentInfo={establishmentInfo} setAllData={setAllData} setArchivedData={setArchivedData} setCurrentTrainingYear={setCurrentTrainingYear} currentTrainingYear={currentTrainingYear} />}
-        {activeTab === 'donnees' && <DataView allData={allData} setAllData={setAllData} trainingYears={trainingYears} archived={archivedData} setArchived={setArchivedData} currentYear={currentTrainingYear} setCurrentTrainingYear={setCurrentTrainingYear} establishmentInfo={establishmentInfo} setEstablishmentInfo={setEstablishmentInfo} userRole={userRole} session={session} />}
+        {activeTab === 'comportement' && <ComportementView allYearsData={allYearsData} setAllData={setAllData} setArchivedData={setArchivedData} currentTrainingYear={globalFilters.year} />}
+        {activeTab === 'donnees_personnelles' && <DonneesPersonnellesView allYearsData={allYearsData} establishmentInfo={establishmentInfo} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} />}
+        {activeTab === 'historique' && <HistoryView allYearsData={allYearsData} establishmentInfo={establishmentInfo} setAllData={setAllData} setArchivedData={setArchivedData} setCurrentTrainingYear={(year: string) => setGlobalFilters(f => ({...f, year}))} currentTrainingYear={globalFilters.year} />}
+        {/* FIX: Removed unused props from `DataView` call to resolve component prop type mismatch error. */}
+        {activeTab === 'donnees' && <DataView allData={allData} setAllData={setAllData} setAlertState={setAlertState}/>}
         {activeTab === 'admin' && userRole === 'super_admin' && <AdminView session={session} />}
       </main>
+       <AlertModal
+            isOpen={alertState.isOpen}
+            onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+            onConfirm={alertState.onConfirm}
+            title={alertState.title}
+            type={alertState.type}
+        >
+            {alertState.message}
+        </AlertModal>
     </div>
   );
 }
 
 // --- HEADER & NAVIGATION ---
-const Header = ({ activeTab, setActiveTab, establishmentInfo, session }: {activeTab: string; setActiveTab: (tab: string) => void, establishmentInfo: { name: string, logo: string | null }, session: Session }) => {
+const Header = ({ activeTab, setActiveTab, establishmentInfo, session, tutorEmail }: { activeTab: string; setActiveTab: (tab: string) => void, establishmentInfo: { name: string, logo: string | null }, session: Session, tutorEmail: string | null }) => {
   
   const userRole = session.user.user_metadata.role;
+  const isAssistant = userRole === 'assistant_admin';
 
   const tabs = [
     { id: 'dashboard', label: 'Tableau de Bord' },
@@ -529,21 +607,25 @@ const Header = ({ activeTab, setActiveTab, establishmentInfo, session }: {active
 
   return (
     <header className="bg-blue-800 text-white shadow-md sticky top-0 z-30 print:hidden">
-       <div className="px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
-        <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Gestion des Absences</h1>
+       <div className="px-4 sm:px-6 lg:px-8 py-3 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="w-full sm:w-auto">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">Gestion des Absences</h1>
             <div className="flex items-center gap-2 mt-1">
                 {establishmentInfo.logo && <img src={establishmentInfo.logo} alt="Logo de l'établissement" className="h-8 w-auto rounded" />}
-                <h2 className="text-base sm:text-lg font-semibold text-blue-200">{establishmentInfo.name}</h2>
+                <h2 className="text-base sm:text-lg font-semibold text-blue-200 truncate">{establishmentInfo.name}</h2>
             </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
             <div className="text-right">
-                <p className="text-sm text-blue-300">Connecté en tant que</p>
-                <p className="font-semibold text-white truncate max-w-[200px]">{session.user.email}</p>
+                <p className="text-sm text-blue-300">
+                    {isAssistant && tutorEmail ? "Compte assistant pour" : "Connecté en tant que"}
+                </p>
+                <p className="font-semibold text-white truncate max-w-[200px] sm:max-w-[250px]">
+                    {isAssistant && tutorEmail ? tutorEmail : session.user.email}
+                </p>
                  {userRole && <span className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block ${userRole === 'super_admin' ? 'bg-yellow-400 text-yellow-900' : 'bg-blue-200 text-blue-900'}`}>{userRole === 'super_admin' ? 'Super Admin' : 'Assistant'}</span>}
             </div>
-            <button onClick={handleLogout} title="Se déconnecter" className="p-2 rounded-full bg-blue-700 hover:bg-blue-600 transition-colors">
+            <button onClick={handleLogout} title="Se déconnecter" className="p-2 rounded-full bg-blue-700 hover:bg-blue-600 transition-colors shrink-0">
                 <LogoutIcon />
             </button>
         </div>
@@ -570,9 +652,10 @@ const Header = ({ activeTab, setActiveTab, establishmentInfo, session }: {active
 };
 
 // --- SAISIE VIEW ---
-const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setCurrentYear, saisieFilters, setSaisieFilters }: {data: TrainingData, setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, availableYears: string[], currentYear: string, setCurrentYear: (year: string) => void, saisieFilters: {groupId: string, month: string, week: string}, setSaisieFilters: React.Dispatch<React.SetStateAction<{groupId: string, month: string, week: string}>>}) => {
+// FIX: Added `trainingYears` to the component's props to resolve the "Cannot find name" error.
+const AbsenceSaisieView = ({ data, setAllData, globalFilters, setGlobalFilters, trainingYears }: {data: TrainingData, setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, globalFilters: GlobalFilters, setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>>, trainingYears: string[]}) => {
     const [saveStatus, setSaveStatus] = useState('');
-    const { groupId: selectedGroupId, month: selectedMonth, week: selectedWeek } = saisieFilters;
+    const { year: currentYear, groupId: selectedGroupId, month: selectedMonth, week: selectedWeek } = globalFilters;
 
     const [isDropoutModalOpen, setIsDropoutModalOpen] = useState(false);
     const [dropoutCandidate, setDropoutCandidate] = useState<{traineeId: string; date: string; sessionId: string;} | null>(null);
@@ -584,36 +667,21 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
     // Initialize filters on first load or when data/year changes
     useEffect(() => {
         let needsUpdate = false;
-        const newFilters = { ...saisieFilters };
+        const newFilters = { ...globalFilters };
 
-        const groupExistsInYear = sortedGroups.some(g => g.id === newFilters.groupId);
-
-        // If groups exist for the selected year, ensure a valid group is selected.
-        // Default to the first group if no group is selected or if the current one is invalid for the new year.
-        if (sortedGroups.length > 0 && (!newFilters.groupId || !groupExistsInYear)) {
-            newFilters.groupId = sortedGroups[0].id;
-            needsUpdate = true;
-        } 
-        // If no groups exist for the selected year, clear the group filter.
-        else if (sortedGroups.length === 0 && newFilters.groupId) {
-            newFilters.groupId = '';
-            needsUpdate = true;
-        }
-
-        const today = new Date();
-        const currentMonthValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-        const monthExists = academicMonths.some(m => m.value === currentMonthValue);
-        
-        if (!newFilters.month) {
-            newFilters.month = monthExists ? currentMonthValue : (academicMonths[0]?.value || '');
+        // Default to a valid month if none is selected
+        if (!newFilters.month && academicMonths.length > 0) {
+            const today = new Date();
+            const currentMonthValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            const monthExists = academicMonths.some(m => m.value === currentMonthValue);
+            newFilters.month = monthExists ? currentMonthValue : academicMonths[0].value;
             needsUpdate = true;
         }
         
         if (needsUpdate) {
-            setSaisieFilters(newFilters);
+            setGlobalFilters(newFilters);
         }
-
-    }, [data.groups, currentYear]); // Reruns when the available groups or the year changes.
+    }, [data.groups, currentYear, academicMonths]);
     
      useEffect(() => {
         if (selectedMonth) {
@@ -625,25 +693,22 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
 
                  if (!weekExists || !selectedWeek) {
                      const weekToSet = currentWeekExists ? currentWeekStart : newWeeks[0].toISOString();
-                     setSaisieFilters(prev => ({...prev, week: weekToSet}));
+                     setGlobalFilters(prev => ({...prev, week: weekToSet}));
                  }
             } else {
-                 setSaisieFilters(prev => ({...prev, week: ''}));
+                 setGlobalFilters(prev => ({...prev, week: ''}));
             }
         }
     }, [selectedMonth]);
     
-     // FIX: This effect ensures that when the selected group changes, if the selected month
-     // is still valid for the new academic year, we don't unnecessarily reset it.
-     // It also ensures that a valid week is selected if the current one becomes invalid.
     useEffect(() => {
         const currentWeeks = getWeeksForMonth(selectedMonth);
         const weekIsValid = currentWeeks.some(w => w.toISOString() === selectedWeek);
 
         if (selectedMonth && !weekIsValid && currentWeeks.length > 0) {
-            setSaisieFilters(prev => ({ ...prev, week: currentWeeks[0].toISOString() }));
+            setGlobalFilters(prev => ({ ...prev, week: currentWeeks[0].toISOString() }));
         } else if (currentWeeks.length === 0) {
-            setSaisieFilters(prev => ({...prev, week: ''}));
+            setGlobalFilters(prev => ({...prev, week: ''}));
         }
 
     }, [selectedGroupId, selectedMonth, selectedWeek]);
@@ -679,7 +744,6 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
     };
 
     const handleConfirmDropout = () => {
-        // TODO: Persist this change to Supabase by updating the trainee's `dropoutDate` and `absences` fields.
         if (!dropoutCandidate) return;
 
         const { traineeId, date } = dropoutCandidate;
@@ -714,7 +778,6 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
     };
 
     const handleAbsenceClick = (traineeId: string, date: string, sessionId: string) => {
-        // TODO: Persist this change to Supabase. This would involve updating the 'absences' JSONB column for the specific trainee.
         setAllData(prevData => {
             const newTrainees = [...prevData.trainees];
             const traineeIndex = newTrainees.findIndex(t => t.id === traineeId);
@@ -785,7 +848,6 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
     };
     
     const handleSave = () => {
-        // In a real app, this might trigger a batch update to Supabase if multiple changes are queued.
         setSaveStatus('Données sauvegardées avec succès !');
         setTimeout(() => setSaveStatus(''), 3000);
     };
@@ -797,48 +859,37 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
 
     return (
         <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg space-y-6">
-            <ConfirmationModal
-                isOpen={isDropoutModalOpen}
-                onClose={handleCancelDropout}
-                onConfirm={handleConfirmDropout}
-                title="Confirmation de Déperdition"
-            >
-                <p>
-                    Êtes-vous sûr de vouloir marquer le stagiaire <span className="font-bold">{dropoutCandidateTrainee?.lastName.toUpperCase()} {dropoutCandidateTrainee?.firstName}</span> comme déperdu ?
-                </p>
-                <p className="mt-2 text-sm text-yellow-700 bg-yellow-50 p-2 rounded-md">
-                    Cette action est irréversible et remplira toutes ses futures absences avec "D".
-                </p>
-            </ConfirmationModal>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                    <label htmlFor="training-year" className="block text-sm font-medium text-gray-700 mb-1">Année de Formation</label>
-                    <select id="training-year" value={currentYear} onChange={(e) => setCurrentYear(e.target.value)} className={inputStyle}>
-                        {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label htmlFor="group" className="block text-sm font-medium text-gray-700 mb-1">Groupe</label>
-                    <select id="group" value={selectedGroupId} onChange={e => setSaisieFilters(prev => ({...prev, groupId: e.target.value}))} className={inputStyle} disabled={!data.groups.length}>
-                        {sortedGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label htmlFor="month" className="block text-sm font-medium text-gray-700 mb-1">Mois</label>
-                    <select id="month" value={selectedMonth} onChange={e => setSaisieFilters(prev => ({...prev, month: e.target.value, week: ''}))} className={inputStyle}>
-                        {academicMonths.map(m => <option key={m.value} value={m.value}>{m.name}</option>)}
-                    </select>
-                </div>
-                 <div>
-                    <label htmlFor="week" className="block text-sm font-medium text-gray-700 mb-1">Semaine</label>
-                     <select id="week" value={selectedWeek} onChange={e => setSaisieFilters(prev => ({...prev, week: e.target.value}))} className={inputStyle} disabled={!weeks.length}>
-                       {weeks.map(weekStart => (
-                           <option key={weekStart.toISOString()} value={weekStart.toISOString()}>
-                               Du {weekStart.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} au {new Date(weekStart.getTime() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
-                           </option>
-                       ))}
-                    </select>
+            <div className="bg-white p-4 rounded-lg shadow-inner border">
+                <h2 className="text-xl font-bold mb-4 text-gray-800">Filtres de Saisie</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                        <label htmlFor="training-year" className="block text-sm font-medium text-gray-700 mb-1">Année de Formation</label>
+                        <select id="training-year" value={currentYear} onChange={(e) => setGlobalFilters(f => ({...f, year: e.target.value, groupId: '', month: '', week: '', traineeId: ''}))} className={inputStyle}>
+                            {useMemo(() => trainingYears.map(year => <option key={year} value={year}>{year}</option>), [trainingYears])}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="group" className="block text-sm font-medium text-gray-700 mb-1">Groupe</label>
+                        <select id="group" value={selectedGroupId} onChange={e => setGlobalFilters(prev => ({...prev, groupId: e.target.value}))} className={inputStyle} disabled={!data.groups.length}>
+                            {sortedGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="month" className="block text-sm font-medium text-gray-700 mb-1">Mois</label>
+                        <select id="month" value={selectedMonth} onChange={e => setGlobalFilters(prev => ({...prev, month: e.target.value, week: ''}))} className={inputStyle}>
+                            {academicMonths.map(m => <option key={m.value} value={m.value}>{m.name}</option>)}
+                        </select>
+                    </div>
+                     <div>
+                        <label htmlFor="week" className="block text-sm font-medium text-gray-700 mb-1">Semaine</label>
+                         <select id="week" value={selectedWeek} onChange={e => setGlobalFilters(prev => ({...prev, week: e.target.value}))} className={inputStyle} disabled={!weeks.length}>
+                           {weeks.map(weekStart => (
+                               <option key={weekStart.toISOString()} value={weekStart.toISOString()}>
+                                   Du {weekStart.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} au {new Date(weekStart.getTime() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                               </option>
+                           ))}
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -913,19 +964,14 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
 };
 
 // --- DASHBOARD VIEW ---
-const DashboardView = ({ allYearsData }: { allYearsData: ArchivedData & { [key: string]: TrainingData } }) => {
-    const allYears = useMemo(() => Object.keys(allYearsData).sort((a, b) => b.localeCompare(a)), [allYearsData]);
-    const [selectedYear, setSelectedYear] = useState(allYears[0] || '');
+const DashboardView = ({ allYearsData, globalFilters, setGlobalFilters }: { allYearsData: ArchivedData & { [key: string]: TrainingData }, globalFilters: GlobalFilters, setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>> }) => {
+    const { year: selectedYear, groupId: selectedGroupId, month: selectedMonth, traineeId: selectedTraineeId } = globalFilters;
+    const allTrainingYears = useMemo(() => Object.keys(allYearsData).sort((a, b) => b.localeCompare(a)), [allYearsData]);
     
     const yearData = useMemo(() => allYearsData[selectedYear], [allYearsData, selectedYear]);
     const academicMonths = useMemo(() => getAcademicYearMonths(selectedYear), [selectedYear]);
 
-    const [selectedGroupId, setSelectedGroupId] = useState<string>('');
-    const [selectedMonth, setSelectedMonth] = useState<string>('');
-    const [selectedTraineeId, setSelectedTraineeId] = useState<string>('');
-
     const groupOptions = useMemo(() => yearData?.groups.map(g => ({id: g.id, name: g.name})).sort((a,b) => a.name.localeCompare(b.name)) || [], [yearData]);
-    const monthOptions = useMemo(() => academicMonths.map(m => ({id: m.value, name: m.name})) || [], [academicMonths]);
     
     const traineesForSelectedGroups = useMemo(() => {
         if (!yearData) return [];
@@ -961,7 +1007,6 @@ const DashboardView = ({ allYearsData }: { allYearsData: ArchivedData & { [key: 
         return filteredTrainees.map(trainee => {
             let totalHours = 0;
             for (const date in trainee.absences) {
-                // For stats, we ignore absences after dropout date
                 if(trainee.dropoutDate && date >= trainee.dropoutDate) continue;
 
                 if (!selectedMonth || date.substring(0, 7) === selectedMonth) {
@@ -975,7 +1020,6 @@ const DashboardView = ({ allYearsData }: { allYearsData: ArchivedData & { [key: 
             const sanctionInfo = calculateTraineeAbsenceStats(trainee, selectedMonth);
             return { 
                 id: trainee.id, 
-                // FIX: Corrected a typo from 't.firstName' to 'trainee.firstName' to resolve a reference error.
                 name: `${trainee.lastName.toUpperCase()} ${trainee.firstName}`, 
                 hours: totalHours,
                 sanction: sanctionInfo.sanction
@@ -1120,7 +1164,7 @@ const DashboardView = ({ allYearsData }: { allYearsData: ArchivedData & { [key: 
 
 
     if (!yearData) {
-        return <div className="bg-white p-6 rounded-lg shadow-lg text-center"><p className="text-gray-600">Aucune donnée disponible.</p></div>;
+        return <div className="bg-white p-6 rounded-lg shadow-lg text-center"><p className="text-gray-600">Aucune donnée disponible pour l'année sélectionnée.</p></div>;
     }
     
     const DropoutMessageDisplay = ({ message }: { message: string }) => (
@@ -1143,30 +1187,27 @@ const DashboardView = ({ allYearsData }: { allYearsData: ArchivedData & { [key: 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Année</label>
-                        <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className={inputStyle}>
-                            {allYears.map(year => <option key={year} value={year}>{year}</option>)}
+                        <select value={selectedYear} onChange={e => setGlobalFilters({year: e.target.value, groupId: '', month: '', week: '', traineeId: ''})} className={inputStyle}>
+                            {allTrainingYears.map(year => <option key={year} value={year}>{year}</option>)}
                         </select>
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Groupe</label>
-                        <select value={selectedGroupId} onChange={e => {
-                            setSelectedGroupId(e.target.value);
-                            setSelectedTraineeId(''); // Reset trainee filter when group changes
-                        }} className={inputStyle}>
+                        <select value={selectedGroupId} onChange={e => setGlobalFilters(f => ({...f, groupId: e.target.value, traineeId: ''}))} className={inputStyle}>
                             <option value="">Tous les groupes</option>
                             {groupOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
                         </select>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Mois</label>
-                        <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className={inputStyle}>
+                        <select value={selectedMonth} onChange={e => setGlobalFilters(f => ({...f, month: e.target.value}))} className={inputStyle}>
                             <option value="">Tous les mois</option>
-                            {monthOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+                            {academicMonths.map(m => <option key={m.value} value={m.value}>{m.name}</option>)}
                         </select>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Stagiaire</label>
-                        <select value={selectedTraineeId} onChange={e => setSelectedTraineeId(e.target.value)} className={inputStyle}>
+                        <select value={selectedTraineeId} onChange={e => setGlobalFilters(f => ({...f, traineeId: e.target.value}))} className={inputStyle}>
                             <option value="">Tous les stagiaires</option>
                             {traineeOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
                         </select>
@@ -1324,9 +1365,269 @@ const PlaceholderView = ({ name }: { name: string }) => (
 
 const AssiduiteView = ({ allYearsData }: { allYearsData: any }) => <PlaceholderView name="Assiduité" />;
 const ComportementView = ({ allYearsData, setAllData, setArchivedData, currentTrainingYear }: { allYearsData: any, setAllData: any, setArchivedData: any, currentTrainingYear: string }) => <PlaceholderView name="Comportement" />;
-const DonneesPersonnellesView = ({ allYearsData, establishmentInfo }: { allYearsData: any, establishmentInfo: any }) => <PlaceholderView name="Données Personnelles" />;
+
+const DonneesPersonnellesView = ({ allYearsData, establishmentInfo, globalFilters, setGlobalFilters }: { allYearsData: ArchivedData & { [key: string]: TrainingData }, establishmentInfo: { name: string, logo: string | null }, globalFilters: GlobalFilters, setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>> }) => {
+    const { year: currentTrainingYear, traineeId: selectedTraineeId } = globalFilters;
+    
+    const allTrainees = useMemo(() => {
+        return Object.values(allYearsData).flatMap(yearData => yearData.trainees);
+    }, [allYearsData]);
+
+    const selectedTrainee = useMemo(() => {
+        return allTrainees.find(t => t.id === selectedTraineeId);
+    }, [allTrainees, selectedTraineeId]);
+
+    const getTraineeGroupAndFiliere = useCallback((trainee: Trainee | undefined) => {
+        if (!trainee) return { groupName: 'N/A', filiereName: 'N/A' };
+        for (const year of Object.keys(allYearsData)) {
+            const yearData = allYearsData[year];
+            const group = yearData.groups.find(g => g.id === trainee.groupId);
+            if (group) {
+                const filiere = yearData.filieres.find(f => f.id === group.filiereId);
+                return {
+                    groupName: group.name,
+                    filiereName: filiere?.name || 'N/A'
+                };
+            }
+        }
+        return { groupName: 'N/A', filiereName: 'N/A' };
+    }, [allYearsData]);
+    
+    const { groupName, filiereName } = getTraineeGroupAndFiliere(selectedTrainee);
+    
+    const traineeAbsenceStats = useMemo(() => {
+        if (!selectedTrainee) return null;
+        return calculateTraineeAbsenceStats(selectedTrainee, ''); // all time stats
+    }, [selectedTrainee]);
+
+    const handlePrint = () => window.print();
+
+    const handleDownloadPdf = async () => {
+        const input = document.getElementById('printable-area');
+        if (!input) return;
+
+        const canvas = await window.html2canvas(input, { scale: 2, useCORS: true, logging: false });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new window.jspdf.jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const ratio = canvasWidth / canvasHeight;
+        const imgHeight = (pdfWidth / ratio);
+        
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+        pdf.save(`fiche-${selectedTrainee?.lastName || 'stagiaire'}.pdf`);
+    };
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 print:hidden">
+                <h2 className="text-2xl font-bold text-gray-800">Fiche Individuelle Stagiaire</h2>
+                <div className="flex items-center gap-4 w-full sm:w-auto">
+                    <select
+                        value={selectedTraineeId}
+                        onChange={e => setGlobalFilters(f => ({...f, traineeId: e.target.value}))}
+                        className={`${inputStyle} w-full sm:w-72`}
+                    >
+                        <option value="">-- Sélectionner un stagiaire --</option>
+                        {allTrainees
+                          .sort((a,b) => a.lastName.localeCompare(b.lastName))
+                          .map(t => <option key={t.id} value={t.id}>{t.lastName.toUpperCase()} {t.firstName}</option>)
+                        }
+                    </select>
+                    <button onClick={handlePrint} className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"><PrinterIcon /> Imprimer</button>
+                    <button onClick={handleDownloadPdf} className="flex items-center bg-gray-700 text-white px-4 py-2 rounded-md hover:bg-gray-800"><DownloadIcon /> PDF</button>
+                </div>
+            </div>
+
+            {selectedTrainee ? (
+                <div id="printable-area">
+                    <div id="fiche-individuelle" className="p-4 sm:p-6 border rounded-lg shadow-md bg-white">
+                        <ExportHeader 
+                            establishmentInfo={establishmentInfo} 
+                            trainingYear={currentTrainingYear} 
+                            title="Fiche Individuelle d'Assiduité et de Comportement"
+                        />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div className="space-y-2">
+                                <h3 className="font-bold text-lg text-gray-700">{selectedTrainee.lastName.toUpperCase()} {selectedTrainee.firstName}</h3>
+                                <p><span className="font-semibold">CEF:</span> {selectedTrainee.cef}</p>
+                                <p><span className="font-semibold">Date de naissance:</span> {new Date(selectedTrainee.birthDate).toLocaleDateString('fr-FR')}</p>
+                                <p><span className="font-semibold">Âge:</span> {calculateAge(selectedTrainee.birthDate)} ans</p>
+                            </div>
+                             <div className="space-y-2">
+                                <h3 className="font-bold text-lg text-gray-700">&nbsp;</h3>
+                                <p><span className="font-semibold">Filière:</span> {filiereName}</p>
+                                <p><span className="font-semibold">Groupe:</span> {groupName}</p>
+                                {selectedTrainee.dropoutDate && <p className="p-2 bg-red-100 text-red-700 font-bold rounded-md">Déperdition le: {new Date(selectedTrainee.dropoutDate).toLocaleDateString('fr-FR')}</p>}
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div>
+                                <h4 className="font-bold text-xl mb-3 pb-2 border-b-2 border-blue-200 text-blue-800">Bilan d'Assiduité</h4>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                                    <div className="p-3 bg-red-50 rounded-lg"><div className="text-2xl font-bold text-red-600">{(traineeAbsenceStats?.totalAbsenceDays || 0) * 2 * SESSION_DURATION}</div><div className="text-sm text-gray-600">Heures d'Absence (A)</div></div>
+                                    <div className="p-3 bg-yellow-50 rounded-lg"><div className="text-2xl font-bold text-yellow-700">{traineeAbsenceStats?.retardCount || 0}</div><div className="text-sm text-gray-600">Retards</div></div>
+                                    <div className={`p-3 rounded-lg ${getSanctionStyle(traineeAbsenceStats?.sanction || null)}`}><div className="text-xl font-bold ">{traineeAbsenceStats?.sanction?.sanction || 'Aucune'}</div><div className="text-sm">Sanction d'assiduité</div></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 className="font-bold text-xl mb-3 pb-2 border-b-2 border-blue-200 text-blue-800">Historique Comportemental</h4>
+                                {selectedTrainee.behavior && selectedTrainee.behavior.length > 0 ? (
+                                    <ul className="space-y-2">
+                                        {selectedTrainee.behavior.map((incident, index) => (
+                                            <li key={index} className="p-3 bg-gray-50 border rounded-md">
+                                                <p className="font-semibold">Le {new Date(incident.date).toLocaleDateString('fr-FR')}: <span className="font-bold text-orange-600">{incident.sanction}</span></p>
+                                                <p className="text-sm text-gray-600">Motif: {incident.motif}</p>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : <p className="text-gray-500">Aucun incident de comportement enregistré.</p>}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : <p className="text-center text-gray-500 py-10">Veuillez sélectionner un stagiaire pour afficher sa fiche.</p>}
+        </div>
+    );
+};
+
 const HistoryView = ({ allYearsData, establishmentInfo, setAllData, setArchivedData, setCurrentTrainingYear, currentTrainingYear }: { allYearsData: any, establishmentInfo: any, setAllData: any, setArchivedData: any, setCurrentTrainingYear: any, currentTrainingYear: string }) => <PlaceholderView name="Historique" />;
-const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, currentYear, setCurrentTrainingYear, establishmentInfo, setEstablishmentInfo, userRole, session }: { allData: any, setAllData: any, trainingYears: any, archived: any, setArchived: any, currentYear: string, setCurrentTrainingYear: any, establishmentInfo: any, setEstablishmentInfo: any, userRole: string, session: Session }) => <PlaceholderView name="Paramètres (Données)" />;
+
+const DataView = ({ allData, setAllData, setAlertState }: { allData: TrainingData, setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, setAlertState: React.Dispatch<React.SetStateAction<AlertState>> }) => {
+    const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+    const [tempAnnualHours, setTempAnnualHours] = useState<number>(0);
+
+    const handleEditHours = (group: Group) => {
+        setEditingGroupId(group.id);
+        setTempAnnualHours(group.annualHours);
+    };
+
+    const handleSaveHours = (groupId: string) => {
+        setAllData(prev => ({
+            ...prev,
+            groups: prev.groups.map(g => g.id === groupId ? { ...g, annualHours: tempAnnualHours } : g)
+        }));
+        setEditingGroupId(null);
+        setAlertState({ isOpen: true, type: 'success', title: 'Succès', message: 'La masse horaire a été mise à jour.' });
+    };
+
+    const handleDeleteFiliere = (filiereId: string, filiereName: string) => {
+        const groupsToDelete = allData.groups.filter(g => g.filiereId === filiereId);
+        const groupCount = groupsToDelete.length;
+        const traineeCount = allData.trainees.filter(t => groupsToDelete.some(g => g.id === t.groupId)).length;
+
+        setAlertState({
+            isOpen: true,
+            type: 'confirm',
+            title: `Supprimer la filière "${filiereName}" ?`,
+            message: (
+                <div className="text-left">
+                    <p>Cette action est irréversible et entraînera la suppression de :</p>
+                    <ul className="list-disc list-inside mt-2 font-semibold">
+                        <li>La filière "{filiereName}"</li>
+                        <li>{groupCount} groupe(s) associé(s)</li>
+                        <li>{traineeCount} stagiaire(s) inscrit(s)</li>
+                    </ul>
+                </div>
+            ),
+            onConfirm: () => {
+                const groupsToDeleteIds = new Set(groupsToDelete.map(g => g.id));
+                const updatedFilieres = allData.filieres.filter(f => f.id !== filiereId);
+                const updatedGroups = allData.groups.filter(g => g.filiereId !== filiereId);
+                const updatedTrainees = allData.trainees.filter(t => !groupsToDeleteIds.has(t.groupId));
+
+                setAllData({
+                    ...allData,
+                    filieres: updatedFilieres,
+                    groups: updatedGroups,
+                    trainees: updatedTrainees,
+                });
+
+                setAlertState({ isOpen: true, type: 'success', title: 'Suppression réussie', message: `La filière "${filiereName}" et toutes ses données associées ont été supprimées.` });
+            }
+        });
+    };
+
+    const filieresByLevel = useMemo(() => {
+        return allData.levels.map(level => ({
+            ...level,
+            filieres: allData.filieres.filter(f => f.levelId === level.id)
+        }));
+    }, [allData.levels, allData.filieres]);
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-lg space-y-8">
+            <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Gestion des Filières</h2>
+                <div className="space-y-4">
+                    {filieresByLevel.map(level => (
+                        <div key={level.id}>
+                            <h3 className="text-lg font-semibold text-gray-700 mb-2">{level.name}</h3>
+                            <ul className="space-y-2">
+                                {level.filieres.map(filiere => (
+                                    <li key={filiere.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
+                                        <span>{filiere.name}</span>
+                                        <button onClick={() => handleDeleteFiliere(filiere.id, filiere.name)} className="text-red-500 hover:text-red-700"><DeleteIcon /></button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Gestion des Groupes</h2>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead className="bg-gray-100">
+                            <tr>
+                                <th className="p-2 text-left">Nom du Groupe</th>
+                                <th className="p-2 text-left">Filière</th>
+                                <th className="p-2 text-left">Masse Horaire Annuelle</th>
+                                <th className="p-2 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {allData.groups.map(group => (
+                                <tr key={group.id} className="border-b">
+                                    <td className="p-2 font-medium">{group.name}</td>
+                                    <td className="p-2">{allData.filieres.find(f => f.id === group.filiereId)?.name}</td>
+                                    <td className="p-2">
+                                        {editingGroupId === group.id ? (
+                                            <input 
+                                                type="number" 
+                                                value={tempAnnualHours} 
+                                                onChange={e => setTempAnnualHours(Number(e.target.value))}
+                                                className="p-1 border rounded w-24"
+                                            />
+                                        ) : (
+                                            <span>{group.annualHours} heures</span>
+                                        )}
+                                    </td>
+                                    <td className="p-2 text-center">
+                                        {editingGroupId === group.id ? (
+                                            <div className="flex gap-2 justify-center">
+                                                <button onClick={() => handleSaveHours(group.id)} className="text-green-600"><SaveIcon /></button>
+                                                <button onClick={() => setEditingGroupId(null)} className="text-red-600"><CancelIcon /></button>
+                                            </div>
+                                        ) : (
+                                            <button onClick={() => handleEditHours(group)} className="text-blue-600"><EditIcon /></button>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 // --- ADMIN VIEW (for super_admin) ---
 const AdminView = ({ session }: { session: Session }) => {
@@ -1457,17 +1758,18 @@ const AdminView = ({ session }: { session: Session }) => {
 
   return (
     <>
-      <ConfirmationModal
+      <AlertModal
         isOpen={modalState.isOpen}
         onClose={closeDeleteModal}
         onConfirm={handleDeleteAssistant}
         title="Confirmer la suppression"
+        type="confirm"
       >
         <p>Êtes-vous sûr de vouloir supprimer l'assistant <span className="font-bold">{modalState.assistantEmail}</span> ?</p>
         <p className="mt-2 text-sm text-yellow-700 bg-yellow-50 p-2 rounded-md">
           Cette action est irréversible et supprimera le lien avec votre compte.
         </p>
-      </ConfirmationModal>
+      </AlertModal>
 
       <div className="bg-white p-6 rounded-lg shadow-lg max-w-4xl mx-auto">
         <div className="flex items-center gap-3 mb-4">
@@ -1559,5 +1861,3 @@ const AdminView = ({ session }: { session: Session }) => {
 };
 
 export default App;
-/ /   N e t l i f y   r e d e p l o y   1 1 / 0 8 / 2 0 2 5   1 6 : 4 6 : 4 9  
- 
