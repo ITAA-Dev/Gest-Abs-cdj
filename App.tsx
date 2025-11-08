@@ -1,3 +1,4 @@
+
 // FIX: Corrected the React import statement to properly import React and its hooks. This resolves all subsequent "Cannot find name" errors in the file.
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { initialLevels, initialFilieres, initialGroups, initialTrainees, DAYS, SESSIONS, SESSION_DURATION, RETARD_VALUE, ABSENCE_TYPES } from './constants';
@@ -380,8 +381,6 @@ const MainApplication = ({ session }: { session: Session }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [currentTrainingYear, setCurrentTrainingYear] = useState('2023-2024');
   
-  // TODO: This data should be fetched from Supabase after login, associated with the user's account.
-  // For now, we continue to use the initial local data for demonstration.
   const [allData, setAllData] = useState<TrainingData>({
     levels: initialLevels,
     filieres: initialFilieres,
@@ -403,6 +402,62 @@ const MainApplication = ({ session }: { session: Session }) => {
   });
 
   const userRole = session.user.user_metadata.role || 'assistant_admin';
+
+  useEffect(() => {
+    const fetchEstablishmentInfo = async () => {
+        let establishmentData: { name: string; logo_base64: string } | null = null;
+        const userId = session.user.id;
+        
+        if (userRole === 'super_admin') {
+            const { data, error } = await supabaseClient
+                .from('establishments')
+                .select('name, logo_base64')
+                .eq('user_id', userId)
+                .single();
+            
+            if (error && error.code !== 'PGRST116') { // PGRST116: "The query returned no rows"
+                 console.error("Error fetching establishment info:", error);
+            } else {
+                establishmentData = data;
+            }
+        } else { // assistant_admin
+            const { data: assistantData, error: assistantError } = await supabaseClient
+                .from('assistants')
+                .select('created_by')
+                .eq('user_id', userId)
+                .single();
+
+            if (assistantError && assistantError.code !== 'PGRST116') {
+                console.error("Error fetching assistant info:", assistantError);
+                return;
+            }
+
+            if (assistantData && assistantData.created_by) {
+                const superAdminId = assistantData.created_by;
+                const { data, error } = await supabaseClient
+                    .from('establishments')
+                    .select('name, logo_base64')
+                    .eq('user_id', superAdminId)
+                    .single();
+
+                if (error && error.code !== 'PGRST116') {
+                     console.error("Error fetching establishment info:", error);
+                } else {
+                    establishmentData = data;
+                }
+            }
+        }
+        
+        if (establishmentData) {
+            setEstablishmentInfo({
+                name: establishmentData.name || 'Mon Établissement de Formation',
+                logo: establishmentData.logo_base64 || null,
+            });
+        }
+    };
+
+    fetchEstablishmentInfo();
+  }, [session.user.id, userRole]);
 
 
   const trainingYears = useMemo(() => {
@@ -434,7 +489,7 @@ const MainApplication = ({ session }: { session: Session }) => {
         {activeTab === 'comportement' && <ComportementView allYearsData={allYearsData} setAllData={setAllData} setArchivedData={setArchivedData} currentTrainingYear={currentTrainingYear} />}
         {activeTab === 'donnees_personnelles' && <DonneesPersonnellesView allYearsData={allYearsData} establishmentInfo={establishmentInfo} />}
         {activeTab === 'historique' && <HistoryView allYearsData={allYearsData} establishmentInfo={establishmentInfo} setAllData={setAllData} setArchivedData={setArchivedData} setCurrentTrainingYear={setCurrentTrainingYear} currentTrainingYear={currentTrainingYear} />}
-        {activeTab === 'donnees' && <DataView allData={allData} setAllData={setAllData} trainingYears={trainingYears} archived={archivedData} setArchived={setArchivedData} currentYear={currentTrainingYear} setCurrentTrainingYear={setCurrentTrainingYear} establishmentInfo={establishmentInfo} setEstablishmentInfo={setEstablishmentInfo} userRole={userRole} />}
+        {activeTab === 'donnees' && <DataView allData={allData} setAllData={setAllData} trainingYears={trainingYears} archived={archivedData} setArchived={setArchivedData} currentYear={currentTrainingYear} setCurrentTrainingYear={setCurrentTrainingYear} establishmentInfo={establishmentInfo} setEstablishmentInfo={setEstablishmentInfo} userRole={userRole} session={session} />}
         {activeTab === 'admin' && userRole === 'super_admin' && <AdminView currentUser={session.user} />}
       </main>
     </div>
@@ -2094,7 +2149,7 @@ const DonneesPersonnellesView = ({ allYearsData, establishmentInfo }: {
 
 
 // --- DATA VIEW / PARAMETRES ---
-const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, currentYear, setCurrentTrainingYear, establishmentInfo, setEstablishmentInfo, userRole }: { 
+const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, currentYear, setCurrentTrainingYear, establishmentInfo, setEstablishmentInfo, userRole, session }: { 
     allData: TrainingData, 
     setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, 
     trainingYears: string[], 
@@ -2104,7 +2159,8 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
     setCurrentTrainingYear: (year: string) => void,
     establishmentInfo: { name: string, logo: string | null },
     setEstablishmentInfo: React.Dispatch<React.SetStateAction<{ name: string, logo: string | null }>>,
-    userRole: 'super_admin' | 'assistant_admin'
+    userRole: 'super_admin' | 'assistant_admin',
+    session: Session
 }) => {
     const [editingFiliereId, setEditingFiliereId] = useState<string | null>(null);
     const [editedFiliereHours, setEditedFiliereHours] = useState<number>(0);
@@ -2124,6 +2180,11 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
     const [isEditingName, setIsEditingName] = useState(false);
     const [tempName, setTempName] = useState(establishmentInfo.name);
     const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void}>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+    const [traineeToDelete, setTraineeToDelete] = useState<Trainee | null>(null);
+
+    useEffect(() => {
+        setTempName(establishmentInfo.name);
+    }, [establishmentInfo.name]);
 
 
     // Filters for MH Section
@@ -2181,43 +2242,91 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
 
     // --- GENERAL INFO HANDLERS ---
     const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-        // TODO: Persist this change to Supabase, likely by uploading the file to Supabase Storage and saving the URL.
+        if (userRole !== 'super_admin') return;
+
         const file = event.target.files?.[0];
         if (file && file.type.startsWith('image/')) {
             const reader = new FileReader();
-            reader.onloadend = () => {
-                setEstablishmentInfo(prev => ({ ...prev, logo: reader.result as string }));
+            reader.onloadend = async () => {
+                const base64Logo = reader.result as string;
+                const updatedInfo = { ...establishmentInfo, logo: base64Logo };
+                setEstablishmentInfo(updatedInfo);
+                
+                const { error } = await supabaseClient
+                    .from('establishments')
+                    .upsert({ 
+                        user_id: session.user.id, 
+                        logo_base64: updatedInfo.logo,
+                        name: updatedInfo.name
+                    }, { onConflict: 'user_id' });
+                
+                if (error) {
+                    console.error("Error saving logo:", error);
+                    alert("Erreur lors de la sauvegarde du logo.");
+                }
             };
             reader.readAsDataURL(file);
         } else {
             alert("Veuillez sélectionner un fichier image valide (png, jpg, etc.).");
         }
-        event.target.value = ''; // Reset input to allow re-uploading the same file
+        event.target.value = ''; // Reset input
     };
 
     const handleEditName = () => {
         setTempName(establishmentInfo.name);
         setIsEditingName(true);
     };
-    const handleSaveName = () => {
-        // TODO: Persist this change to Supabase.
-        setEstablishmentInfo(prev => ({ ...prev, name: tempName }));
+
+    const handleSaveName = async () => {
+        if (userRole !== 'super_admin') return;
+    
+        const oldName = establishmentInfo.name;
+        const updatedInfo = { ...establishmentInfo, name: tempName };
+        setEstablishmentInfo(updatedInfo);
         setIsEditingName(false);
+    
+        const { error } = await supabaseClient
+            .from('establishments')
+            .upsert({
+                user_id: session.user.id,
+                name: updatedInfo.name,
+                logo_base64: updatedInfo.logo,
+            }, { onConflict: 'user_id' });
+    
+        if (error) {
+            console.error("Error saving establishment name:", error);
+            alert("Erreur lors de la sauvegarde du nom.");
+            setEstablishmentInfo(prev => ({ ...prev, name: oldName }));
+            setIsEditingName(true);
+        }
     };
     const handleCancelName = () => {
         setIsEditingName(false);
     };
 
     const openDeleteConfirm = (target: 'logo' | 'name') => {
+        if (userRole !== 'super_admin') return;
+
         if (target === 'logo') {
             setConfirmModal({
                 isOpen: true,
                 title: 'Supprimer le logo',
                 message: 'Êtes-vous sûr de vouloir supprimer le logo de l\'établissement ?',
-                onConfirm: () => {
-                    // TODO: Persist this change to Supabase.
+                onConfirm: async () => {
+                    const oldLogo = establishmentInfo.logo;
                     setEstablishmentInfo(prev => ({ ...prev, logo: null }));
                     setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+                    
+                    const { error } = await supabaseClient
+                        .from('establishments')
+                        .update({ logo_base64: null })
+                        .eq('user_id', session.user.id);
+                    
+                    if (error) {
+                        console.error("Error deleting logo:", error);
+                        alert("Erreur lors de la suppression du logo.");
+                        setEstablishmentInfo(prev => ({ ...prev, logo: oldLogo }));
+                    }
                 }
             });
         } else { // 'name'
@@ -2225,12 +2334,24 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
                 isOpen: true,
                 title: 'Supprimer le nom',
                 message: 'Êtes-vous sûr de vouloir supprimer le nom de l\'établissement ? Cette action est irréversible.',
-                onConfirm: () => {
-                    // TODO: Persist this change to Supabase.
+                onConfirm: async () => {
+                    const oldName = establishmentInfo.name;
                     setEstablishmentInfo(prev => ({ ...prev, name: '' }));
                     setTempName('');
                     setIsEditingName(false);
                     setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+
+                    const { error } = await supabaseClient
+                        .from('establishments')
+                        .update({ name: '' })
+                        .eq('user_id', session.user.id);
+
+                    if (error) {
+                        console.error("Error deleting name:", error);
+                        alert("Erreur lors de la suppression du nom.");
+                        setEstablishmentInfo(prev => ({ ...prev, name: oldName }));
+                        setTempName(oldName);
+                    }
                 }
             });
         }
@@ -2556,6 +2677,18 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
         alert(`L'année ${currentYear} a été archivée. Vous travaillez maintenant sur la nouvelle année : ${newYearName}.`);
     };
 
+    const handleDeleteTrainee = () => {
+        if (!traineeToDelete) return;
+        // In a real app, this would also trigger a call to delete the trainee from Supabase.
+        setAllData(prevData => ({
+            ...prevData,
+            trainees: prevData.trainees.filter(t => t.id !== traineeToDelete.id),
+        }));
+        setActionStatus(`Le stagiaire a été supprimé avec succès.`);
+        setTimeout(() => setActionStatus(''), 3000);
+        setTraineeToDelete(null); // Close modal
+    };
+
     return (
         <div className="bg-white p-6 rounded-lg shadow-lg space-y-4">
              <ConfirmationModal
@@ -2565,6 +2698,19 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
                 title={confirmModal.title}
             >
                 <p>{confirmModal.message}</p>
+            </ConfirmationModal>
+            <ConfirmationModal
+                isOpen={!!traineeToDelete}
+                onClose={() => setTraineeToDelete(null)}
+                onConfirm={handleDeleteTrainee}
+                title="Confirmer la Suppression du Stagiaire"
+            >
+                <p>
+                    Êtes-vous sûr de vouloir supprimer définitivement le stagiaire <span className="font-bold">{traineeToDelete?.lastName.toUpperCase()} {traineeToDelete?.firstName}</span> ?
+                </p>
+                <p className="mt-2 text-sm text-yellow-700 bg-yellow-50 p-2 rounded-md">
+                    Cette action est irréversible et supprimera toutes les données associées (absences, comportement, etc.).
+                </p>
             </ConfirmationModal>
 
             {userRole === 'super_admin' && (
@@ -2768,6 +2914,7 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
                                          <th className="py-3 px-2 sm:px-6">Date de Naissance</th>
                                          <th className="py-3 px-2 sm:px-6">Âge</th>
                                          <th className="py-3 px-2 sm:px-6">Groupe</th>
+                                         {userRole === 'super_admin' && <th className="py-3 px-2 sm:px-6 text-right">Actions</th>}
                                      </tr>
                                  </thead>
                                  <tbody className="bg-white">
@@ -2779,6 +2926,17 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
                                             <td className="py-4 px-2 sm:px-6">{new Date(trainee.birthDate).toLocaleDateString('fr-FR')}</td>
                                             <td className="py-4 px-2 sm:px-6">{calculateAge(trainee.birthDate)} ans</td>
                                             <td className="py-4 px-2 sm:px-6">{allData.groups.find(g => g.id === trainee.groupId)?.name}</td>
+                                            {userRole === 'super_admin' && (
+                                                <td className="py-4 px-2 sm:px-6 text-right">
+                                                    <button 
+                                                        onClick={() => setTraineeToDelete(trainee)}
+                                                        className="p-1 text-red-500 hover:text-red-700 rounded-full hover:bg-red-100 transition-colors" 
+                                                        title="Supprimer le stagiaire"
+                                                    >
+                                                        <DeleteIcon />
+                                                    </button>
+                                                </td>
+                                            )}
                                         </tr>
                                     ))}
                                  </tbody>
