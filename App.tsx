@@ -1,6 +1,5 @@
 // FIX: Corrected the React import statement to properly import React and its hooks. This resolves all subsequent "Cannot find name" errors in the file.
-import React from 'react';
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { initialLevels, initialFilieres, initialGroups, initialTrainees, DAYS, SESSIONS, SESSION_DURATION, RETARD_VALUE, ABSENCE_TYPES } from './constants';
 import type { Trainee, Group, Filiere, Level, TrainingData, ArchivedData, AbsenceType, BehaviorIncident } from './types';
 import { supabaseClient } from './supabaseClient';
@@ -153,24 +152,14 @@ const calculateTraineeBehaviorStats = (trainee: Trainee) => {
     if (incidentCount === 0) {
         return { incidentCount, sanction: null };
     }
-
-    // Create a map of sanction name to severity level (lower index in thresholds array = higher severity)
-    const sanctionSeverity = new Map(BEHAVIOR_SANCTION_THRESHOLDS.map((rule, index) => [rule.sanction, BEHAVIOR_SANCTION_THRESHOLDS.length - index]));
-
-    let highestSanctionObject = null;
-    let maxSeverity = -1;
-
-    for (const incident of incidents) {
-        // The incident now has a sanction property
-        const severity = sanctionSeverity.get(incident.sanction);
-        if (severity !== undefined && severity > maxSeverity) {
-            maxSeverity = severity;
-            // Find the full sanction object from the thresholds array to get points, authority etc.
-            highestSanctionObject = BEHAVIOR_SANCTION_THRESHOLDS.find(s => s.sanction === incident.sanction) || null;
+    
+    for (const rule of [...BEHAVIOR_SANCTION_THRESHOLDS].sort((a,b) => b.minIncidents - a.minIncidents)) {
+        if (incidentCount >= rule.minIncidents) {
+            return { incidentCount, sanction: rule };
         }
     }
 
-    return { incidentCount, sanction: highestSanctionObject };
+    return { incidentCount, sanction: null };
 };
 
 
@@ -478,35 +467,28 @@ const MainApplication = ({ session }: { session: Session }) => {
 
         // Logic to fetch establishment info, which is needed by both roles
         let establishmentData: { name: string; logo_base64: string } | null = null;
+        let establishmentUserId: string | null = null;
+
         if (userRole === 'super_admin') {
-            const { data, error } = await supabaseClient
-                .from('establishments')
-                .select('name, logo_base64')
-                .eq('user_id', userId)
-                .single();
-            if (error && error.code !== 'PGRST116') console.error("Error fetching establishment info:", error);
-            else establishmentData = data;
+            establishmentUserId = userId;
         } else { // assistant_admin
             const { data: assistantData, error: assistantError } = await supabaseClient
                 .from('assistants')
                 .select('created_by')
                 .eq('user_id', userId)
                 .single();
+            if (assistantError && assistantError.code !== 'PGRST116') console.error("Error fetching assistant info:", assistantError);
+            else if(assistantData?.created_by) establishmentUserId = assistantData.created_by;
+        }
 
-            if (assistantError && assistantError.code !== 'PGRST116') {
-                console.error("Error fetching assistant info:", assistantError);
-                return;
-            }
-
-            if (assistantData?.created_by) {
-                const { data, error } = await supabaseClient
+        if(establishmentUserId){
+             const { data, error } = await supabaseClient
                     .from('establishments')
                     .select('name, logo_base64')
-                    .eq('user_id', assistantData.created_by)
+                    .eq('user_id', establishmentUserId)
                     .single();
-                if (error && error.code !== 'PGRST116') console.error("Error fetching establishment info:", error);
-                else establishmentData = data;
-            }
+            if (error && error.code !== 'PGRST116') console.error("Error fetching establishment info:", error);
+            else establishmentData = data;
         }
         
         if (establishmentData) {
@@ -557,15 +539,13 @@ const MainApplication = ({ session }: { session: Session }) => {
     <div className="min-h-screen bg-gray-100 text-gray-800">
       <Header activeTab={activeTab} setActiveTab={setActiveTab} establishmentInfo={establishmentInfo} session={session} tutorEmail={tutorEmail} />
       <main className="p-4 sm:p-6 md:p-8">
-        {activeTab === 'dashboard' && <DashboardView allYearsData={allYearsData} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} />}
-        {/* FIX: Pass `trainingYears` prop to `AbsenceSaisieView` to make it available within the component. */}
+        {activeTab === 'dashboard' && <DashboardView allYearsData={allYearsData} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} allData={allData} />}
         {activeTab === 'saisie' && <AbsenceSaisieView data={currentYearData} setAllData={setAllData} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} trainingYears={trainingYears} />}
-        {activeTab === 'assiduite' && <AssiduiteView allYearsData={allYearsData} />}
-        {activeTab === 'comportement' && <ComportementView allYearsData={allYearsData} setAllData={setAllData} setArchivedData={setArchivedData} currentTrainingYear={globalFilters.year} />}
-        {activeTab === 'donnees_personnelles' && <DonneesPersonnellesView allYearsData={allYearsData} establishmentInfo={establishmentInfo} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} />}
-        {activeTab === 'historique' && <HistoryView allYearsData={allYearsData} establishmentInfo={establishmentInfo} setAllData={setAllData} setArchivedData={setArchivedData} setCurrentTrainingYear={(year: string) => setGlobalFilters(f => ({...f, year}))} currentTrainingYear={globalFilters.year} />}
-        {/* FIX: Removed unused props from `DataView` call to resolve component prop type mismatch error. */}
-        {activeTab === 'donnees' && <DataView allData={allData} setAllData={setAllData} setAlertState={setAlertState}/>}
+        {activeTab === 'assiduite' && <AssiduiteView currentYearData={currentYearData} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} trainingYears={trainingYears} />}
+        {activeTab === 'comportement' && <ComportementView currentYearData={currentYearData} setAllData={setAllData} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} trainingYears={trainingYears} setAlertState={setAlertState} />}
+        {activeTab === 'donnees_personnelles' && <DonneesPersonnellesView allYearsData={allYearsData} establishmentInfo={establishmentInfo} globalFilters={globalFilters} setGlobalFilters={setGlobalFilters} currentYearData={currentYearData} trainingYears={trainingYears} />}
+        {activeTab === 'historique' && <HistoryView />}
+        {activeTab === 'donnees' && <DataView allData={allData} setAllData={setAllData} setAlertState={setAlertState} establishmentInfo={establishmentInfo} setEstablishmentInfo={setEstablishmentInfo} session={session}/>}
         {activeTab === 'admin' && userRole === 'super_admin' && <AdminView session={session} />}
       </main>
        <AlertModal
@@ -652,7 +632,6 @@ const Header = ({ activeTab, setActiveTab, establishmentInfo, session, tutorEmai
 };
 
 // --- SAISIE VIEW ---
-// FIX: Added `trainingYears` to the component's props to resolve the "Cannot find name" error.
 const AbsenceSaisieView = ({ data, setAllData, globalFilters, setGlobalFilters, trainingYears }: {data: TrainingData, setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, globalFilters: GlobalFilters, setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>>, trainingYears: string[]}) => {
     const [saveStatus, setSaveStatus] = useState('');
     const { year: currentYear, groupId: selectedGroupId, month: selectedMonth, week: selectedWeek } = globalFilters;
@@ -964,7 +943,7 @@ const AbsenceSaisieView = ({ data, setAllData, globalFilters, setGlobalFilters, 
 };
 
 // --- DASHBOARD VIEW ---
-const DashboardView = ({ allYearsData, globalFilters, setGlobalFilters }: { allYearsData: ArchivedData & { [key: string]: TrainingData }, globalFilters: GlobalFilters, setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>> }) => {
+const DashboardView = ({ allYearsData, globalFilters, setGlobalFilters, allData }: { allYearsData: ArchivedData & { [key: string]: TrainingData }, globalFilters: GlobalFilters, setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>>, allData: TrainingData }) => {
     const { year: selectedYear, groupId: selectedGroupId, month: selectedMonth, traineeId: selectedTraineeId } = globalFilters;
     const allTrainingYears = useMemo(() => Object.keys(allYearsData).sort((a, b) => b.localeCompare(a)), [allYearsData]);
     
@@ -1061,7 +1040,7 @@ const DashboardView = ({ allYearsData, globalFilters, setGlobalFilters }: { allY
         });
         
         const totalExpectedHours = filteredTrainees.reduce((acc, trainee) => {
-            const group = yearData.groups.find(g => g.id === trainee.groupId);
+            const group = allData.groups.find(g => g.id === trainee.groupId);
             return acc + (group ? group.annualHours : 0);
         }, 0);
         
@@ -1073,7 +1052,7 @@ const DashboardView = ({ allYearsData, globalFilters, setGlobalFilters }: { allY
 
 
         return { totalAbsenceHours, absenceTypeCounts, monthlyAbsenceHours, absenteeismRate, totalExpectedHours, dropoutCount, dropoutRate };
-    }, [filteredTrainees, dropoutTrainees, selectedMonth, academicMonths, traineeStats, yearData]);
+    }, [filteredTrainees, dropoutTrainees, selectedMonth, academicMonths, traineeStats, allData]);
 
     const BarChartAbsenceType = ({ data }: { data: { [key in AbsenceType]: number } }) => {
         const total = Object.values(data).reduce((a, b) => a + b, 0);
@@ -1354,44 +1333,283 @@ const StatCard = ({ icon, title, value, dropoutMessage }: {icon: React.ReactNode
     </div>
 );
 
-// --- PLACEHOLDER & NEW COMPONENTS ---
-
-const PlaceholderView = ({ name }: { name: string }) => (
-    <div className="bg-white p-6 rounded-lg shadow-lg">
-        <h2 className="text-2xl font-bold text-gray-800">{name}</h2>
-        <p className="mt-4 text-gray-600">This component is not yet fully implemented.</p>
-    </div>
-);
-
-const AssiduiteView = ({ allYearsData }: { allYearsData: any }) => <PlaceholderView name="Assiduité" />;
-const ComportementView = ({ allYearsData, setAllData, setArchivedData, currentTrainingYear }: { allYearsData: any, setAllData: any, setArchivedData: any, currentTrainingYear: string }) => <PlaceholderView name="Comportement" />;
-
-const DonneesPersonnellesView = ({ allYearsData, establishmentInfo, globalFilters, setGlobalFilters }: { allYearsData: ArchivedData & { [key: string]: TrainingData }, establishmentInfo: { name: string, logo: string | null }, globalFilters: GlobalFilters, setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>> }) => {
-    const { year: currentTrainingYear, traineeId: selectedTraineeId } = globalFilters;
+// --- ASSIDUITE VIEW ---
+const AssiduiteView = ({ currentYearData, globalFilters, setGlobalFilters, trainingYears }: { currentYearData: TrainingData; globalFilters: GlobalFilters; setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>>; trainingYears: string[]; }) => {
+    const { year: currentYear, groupId: selectedGroupId } = globalFilters;
     
-    const allTrainees = useMemo(() => {
-        return Object.values(allYearsData).flatMap(yearData => yearData.trainees);
-    }, [allYearsData]);
+    const filteredTrainees = useMemo(() => {
+        return currentYearData.trainees
+            .filter(t => !selectedGroupId || t.groupId === selectedGroupId)
+            .sort((a, b) => a.lastName.localeCompare(b.lastName));
+    }, [currentYearData.trainees, selectedGroupId]);
+
+    const traineeStats = useMemo(() => {
+        return filteredTrainees.map(trainee => {
+            const stats = calculateTraineeAbsenceStats(trainee, ''); // all time
+            return {
+                ...trainee,
+                stats: stats
+            };
+        });
+    }, [filteredTrainees]);
+
+    return (
+        <div className="space-y-6">
+            <div className="bg-white p-4 rounded-lg shadow-lg">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Suivi de l'Assiduité</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="training-year-assiduite" className="block text-sm font-medium text-gray-700 mb-1">Année de Formation</label>
+                        <select id="training-year-assiduite" value={currentYear} onChange={(e) => setGlobalFilters(f => ({...f, year: e.target.value, groupId: '', traineeId: ''}))} className={inputStyle}>
+                            {trainingYears.map(year => <option key={year} value={year}>{year}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="group-assiduite" className="block text-sm font-medium text-gray-700 mb-1">Groupe</label>
+                        <select id="group-assiduite" value={selectedGroupId} onChange={e => setGlobalFilters(f => ({...f, groupId: e.target.value, traineeId: ''}))} className={inputStyle} disabled={!currentYearData.groups.length}>
+                            <option value="">Tous les groupes</option>
+                            {currentYearData.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg shadow-lg">
+                <h3 className="text-xl font-semibold text-gray-700 mb-3">Barème des Sanctions (Assiduité)</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-100 text-xs uppercase">
+                            <tr>
+                                <th className="p-2">Cumul Retards</th>
+                                <th className="p-2">Équiv. Journées</th>
+                                <th className="p-2">Points</th>
+                                <th className="p-2">Sanction Proposée</th>
+                                <th className="p-2">Autorité</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {SANCTION_RULES_FOR_DISPLAY.map((rule, index) => (
+                                <tr key={index} className="hover:bg-gray-50">
+                                    <td className="p-2 font-medium">{rule.retards}</td>
+                                    <td className="p-2">{rule.days}</td>
+                                    <td className="p-2 font-bold">{rule.points}</td>
+                                    <td className="p-2 font-semibold text-blue-800">{rule.sanction}</td>
+                                    <td className="p-2 text-gray-600">{rule.authority}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg shadow-lg">
+                <h3 className="text-xl font-semibold text-gray-700 mb-3">Situation des Stagiaires</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-100 text-xs uppercase">
+                            <tr>
+                                <th className="p-2">Stagiaire</th>
+                                <th className="p-2 text-center">Nombre de Retards</th>
+                                <th className="p-2 text-center">Jours d'Absence (A)</th>
+                                <th className="p-2">Sanction Atteinte</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {traineeStats.map(trainee => (
+                                <tr key={trainee.id} className="hover:bg-gray-50">
+                                    <td className="p-2 font-medium">{`${trainee.lastName.toUpperCase()} ${trainee.firstName}`}</td>
+                                    <td className="p-2 text-center font-bold">{trainee.stats.retardCount}</td>
+                                    <td className="p-2 text-center font-bold text-red-600">{trainee.stats.totalAbsenceDays}</td>
+                                    <td className="p-2">
+                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${getSanctionStyle(trainee.stats.sanction)}`}>
+                                            {trainee.stats.sanction?.sanction || 'Aucune'}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                             {traineeStats.length === 0 && (
+                                <tr>
+                                    <td colSpan={4} className="text-center py-6 text-gray-500">Aucun stagiaire à afficher pour les filtres sélectionnés.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- COMPORTEMENT VIEW ---
+const ComportementView = ({ currentYearData, setAllData, globalFilters, setGlobalFilters, trainingYears, setAlertState }: { currentYearData: TrainingData; setAllData: React.Dispatch<React.SetStateAction<TrainingData>>; globalFilters: GlobalFilters; setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>>; trainingYears: string[]; setAlertState: React.Dispatch<React.SetStateAction<AlertState>> }) => {
+    const { year: currentYear, groupId: selectedGroupId, traineeId: selectedTraineeId } = globalFilters;
+    
+    const [incidentForm, setIncidentForm] = useState({ date: formatDate(new Date()), motif: '', sanction: BEHAVIOR_SANCTION_THRESHOLDS[BEHAVIOR_SANCTION_THRESHOLDS.length - 1].sanction });
+    
+    const traineesForGroup = useMemo(() => 
+        currentYearData.trainees
+            .filter(t => !selectedGroupId || t.groupId === selectedGroupId)
+            .sort((a,b) => a.lastName.localeCompare(b.lastName)), 
+        [currentYearData.trainees, selectedGroupId]
+    );
+
+    const selectedTrainee = useMemo(() => 
+        traineesForGroup.find(t => t.id === selectedTraineeId),
+        [traineesForGroup, selectedTraineeId]
+    );
+
+    const handleAddIncident = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedTraineeId || !incidentForm.motif) {
+            setAlertState({ isOpen: true, type: 'error', title: 'Erreur', message: 'Veuillez sélectionner un stagiaire et saisir un motif.'});
+            return;
+        }
+
+        setAllData(prev => ({
+            ...prev,
+            trainees: prev.trainees.map(t => {
+                if (t.id === selectedTraineeId) {
+                    const newBehavior = [...(t.behavior || []), incidentForm];
+                    return { ...t, behavior: newBehavior };
+                }
+                return t;
+            })
+        }));
+
+        setAlertState({ isOpen: true, type: 'success', title: 'Succès', message: 'Incident ajouté avec succès.'});
+        setIncidentForm({ date: formatDate(new Date()), motif: '', sanction: BEHAVIOR_SANCTION_THRESHOLDS[BEHAVIOR_SANCTION_THRESHOLDS.length - 1].sanction });
+    };
+
+    const handleDeleteIncident = (traineeId: string, incidentIndex: number) => {
+         setAllData(prev => ({
+            ...prev,
+            trainees: prev.trainees.map(t => {
+                if (t.id === traineeId) {
+                    const newBehavior = [...(t.behavior || [])];
+                    newBehavior.splice(incidentIndex, 1);
+                    return { ...t, behavior: newBehavior };
+                }
+                return t;
+            })
+        }));
+        setAlertState({ isOpen: true, type: 'success', title: 'Succès', message: 'Incident supprimé.'});
+    };
+
+    const traineeBehaviorStats = useMemo(() => selectedTrainee ? calculateTraineeBehaviorStats(selectedTrainee) : null, [selectedTrainee]);
+
+    return (
+        <div className="space-y-6">
+            <div className="bg-white p-4 rounded-lg shadow-lg">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Gestion du Comportement</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <select value={currentYear} onChange={(e) => setGlobalFilters(f => ({...f, year: e.target.value, groupId: '', traineeId: ''}))} className={inputStyle}>
+                        {trainingYears.map(year => <option key={year} value={year}>{year}</option>)}
+                    </select>
+                    <select value={selectedGroupId} onChange={e => setGlobalFilters(f => ({...f, groupId: e.target.value, traineeId: ''}))} className={inputStyle} >
+                        <option value="">Tous les groupes</option>
+                        {currentYearData.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                    <select value={selectedTraineeId} onChange={e => setGlobalFilters(f => ({...f, traineeId: e.target.value}))} className={inputStyle}>
+                        <option value="">-- Sélectionner un stagiaire --</option>
+                        {traineesForGroup.map(t => <option key={t.id} value={t.id}>{`${t.lastName.toUpperCase()} ${t.firstName}`}</option>)}
+                    </select>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1 space-y-6">
+                     <div className="bg-white p-4 rounded-lg shadow-lg">
+                        <h3 className="text-xl font-semibold text-gray-700 mb-3">Ajouter un Incident</h3>
+                        {selectedTraineeId ? (
+                            <form onSubmit={handleAddIncident} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium">Date</label>
+                                    <input type="date" value={incidentForm.date} onChange={e => setIncidentForm({...incidentForm, date: e.target.value})} className={inputStyle} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium">Motif</label>
+                                    <textarea value={incidentForm.motif} onChange={e => setIncidentForm({...incidentForm, motif: e.target.value})} className={inputStyle} rows={3}></textarea>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium">Sanction Appliquée</label>
+                                    <select value={incidentForm.sanction} onChange={e => setIncidentForm({...incidentForm, sanction: e.target.value})} className={inputStyle}>
+                                       {BEHAVIOR_SANCTION_THRESHOLDS.map(s => <option key={s.sanction} value={s.sanction}>{s.sanction}</option>).reverse()}
+                                    </select>
+                                </div>
+                                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Ajouter l'incident</button>
+                            </form>
+                        ) : <p className="text-gray-500 text-center py-8">Veuillez sélectionner un stagiaire.</p>}
+                    </div>
+
+                    <div className="bg-white p-4 rounded-lg shadow-lg">
+                        <h3 className="text-xl font-semibold text-gray-700 mb-3">Barème (Comportement)</h3>
+                        <ul className="space-y-2">
+                           {BEHAVIOR_SANCTION_RULES_FOR_DISPLAY.map(rule => (
+                               <li key={rule.motif} className="text-sm p-2 bg-gray-50 rounded-md">
+                                   <p><span className="font-bold">{rule.motif}:</span> <span className="font-semibold text-blue-800">{rule.sanction}</span> ({rule.points} pts)</p>
+                                   <p className="text-xs text-gray-500">Autorité: {rule.authority}</p>
+                               </li>
+                           ))}
+                        </ul>
+                    </div>
+                </div>
+
+                <div className="lg:col-span-2 bg-white p-4 rounded-lg shadow-lg">
+                    <h3 className="text-xl font-semibold text-gray-700 mb-3">
+                       {selectedTrainee ? `Historique de ${selectedTrainee.firstName} ${selectedTrainee.lastName}` : "Historique du Stagiaire"}
+                    </h3>
+                    {selectedTrainee ? (
+                        <>
+                            <div className={`p-3 rounded-lg mb-4 text-center ${getBehaviorSanctionStyle(traineeBehaviorStats?.sanction || null)}`}>
+                                <div className="text-lg font-bold">{traineeBehaviorStats?.sanction?.sanction || 'Aucune sanction'}</div>
+                                <div className="text-sm">({traineeBehaviorStats?.incidentCount || 0} incident(s) enregistré(s))</div>
+                            </div>
+                            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+                                {(selectedTrainee.behavior || []).map((incident, index) => (
+                                     <div key={index} className="p-3 bg-gray-50 border rounded-md relative group">
+                                         <p className="font-semibold">Le {new Date(incident.date).toLocaleDateString('fr-FR')}: <span className="font-bold text-orange-600">{incident.sanction}</span></p>
+                                         <p className="text-sm text-gray-600 mt-1">Motif: {incident.motif}</p>
+                                         <button onClick={() => handleDeleteIncident(selectedTrainee.id, index)} className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-600 hover:bg-red-100 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                             <DeleteIcon />
+                                         </button>
+                                     </div>
+                                ))}
+                                {(selectedTrainee.behavior || []).length === 0 && <p className="text-gray-500 text-center py-8">Aucun incident enregistré.</p>}
+                            </div>
+                        </>
+                    ) : <p className="text-gray-500 text-center py-16">Veuillez sélectionner un stagiaire pour voir son historique.</p>}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+const DonneesPersonnellesView = ({ allYearsData, establishmentInfo, globalFilters, setGlobalFilters, currentYearData, trainingYears }: { allYearsData: ArchivedData & { [key: string]: TrainingData }, establishmentInfo: { name: string, logo: string | null }, globalFilters: GlobalFilters, setGlobalFilters: React.Dispatch<React.SetStateAction<GlobalFilters>>, currentYearData: TrainingData, trainingYears: string[] }) => {
+    const { year: currentTrainingYear, groupId: selectedGroupId, traineeId: selectedTraineeId } = globalFilters;
+    
+    const traineesForFilter = useMemo(() => {
+        return currentYearData.trainees
+            .filter(t => !selectedGroupId || t.groupId === selectedGroupId)
+            .sort((a,b) => a.lastName.localeCompare(b.lastName));
+    }, [currentYearData, selectedGroupId]);
 
     const selectedTrainee = useMemo(() => {
-        return allTrainees.find(t => t.id === selectedTraineeId);
-    }, [allTrainees, selectedTraineeId]);
+        return currentYearData.trainees.find(t => t.id === selectedTraineeId);
+    }, [currentYearData.trainees, selectedTraineeId]);
 
     const getTraineeGroupAndFiliere = useCallback((trainee: Trainee | undefined) => {
         if (!trainee) return { groupName: 'N/A', filiereName: 'N/A' };
-        for (const year of Object.keys(allYearsData)) {
-            const yearData = allYearsData[year];
-            const group = yearData.groups.find(g => g.id === trainee.groupId);
-            if (group) {
-                const filiere = yearData.filieres.find(f => f.id === group.filiereId);
-                return {
-                    groupName: group.name,
-                    filiereName: filiere?.name || 'N/A'
-                };
-            }
+        const group = currentYearData.groups.find(g => g.id === trainee.groupId);
+        if (group) {
+            const filiere = currentYearData.filieres.find(f => f.id === group.filiereId);
+            return {
+                groupName: group.name,
+                filiereName: filiere?.name || 'N/A'
+            };
         }
         return { groupName: 'N/A', filiereName: 'N/A' };
-    }, [allYearsData]);
+    }, [currentYearData]);
     
     const { groupName, filiereName } = getTraineeGroupAndFiliere(selectedTrainee);
     
@@ -1399,6 +1617,8 @@ const DonneesPersonnellesView = ({ allYearsData, establishmentInfo, globalFilter
         if (!selectedTrainee) return null;
         return calculateTraineeAbsenceStats(selectedTrainee, ''); // all time stats
     }, [selectedTrainee]);
+
+    const traineeBehaviorStats = useMemo(() => selectedTrainee ? calculateTraineeBehaviorStats(selectedTrainee) : null, [selectedTrainee]);
 
     const handlePrint = () => window.print();
 
@@ -1424,21 +1644,23 @@ const DonneesPersonnellesView = ({ allYearsData, establishmentInfo, globalFilter
         <div className="bg-white p-6 rounded-lg shadow-lg">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 print:hidden">
                 <h2 className="text-2xl font-bold text-gray-800">Fiche Individuelle Stagiaire</h2>
-                <div className="flex items-center gap-4 w-full sm:w-auto">
-                    <select
-                        value={selectedTraineeId}
-                        onChange={e => setGlobalFilters(f => ({...f, traineeId: e.target.value}))}
-                        className={`${inputStyle} w-full sm:w-72`}
-                    >
-                        <option value="">-- Sélectionner un stagiaire --</option>
-                        {allTrainees
-                          .sort((a,b) => a.lastName.localeCompare(b.lastName))
-                          .map(t => <option key={t.id} value={t.id}>{t.lastName.toUpperCase()} {t.firstName}</option>)
-                        }
+                 <div className="flex items-center gap-4 w-full sm:w-auto flex-wrap">
+                    <select value={currentTrainingYear} onChange={e => setGlobalFilters(f => ({...f, year: e.target.value, groupId: '', traineeId: ''}))} className={`${inputStyle} w-full sm:w-auto`}>
+                        {trainingYears.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
-                    <button onClick={handlePrint} className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"><PrinterIcon /> Imprimer</button>
-                    <button onClick={handleDownloadPdf} className="flex items-center bg-gray-700 text-white px-4 py-2 rounded-md hover:bg-gray-800"><DownloadIcon /> PDF</button>
+                     <select value={selectedGroupId} onChange={e => setGlobalFilters(f => ({...f, groupId: e.target.value, traineeId: ''}))} className={`${inputStyle} w-full sm:w-auto`}>
+                        <option value="">Tous les groupes</option>
+                        {currentYearData.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                    <select value={selectedTraineeId} onChange={e => setGlobalFilters(f => ({...f, traineeId: e.target.value}))} className={`${inputStyle} w-full sm:w-72`}>
+                        <option value="">-- Sélectionner un stagiaire --</option>
+                        {traineesForFilter.map(t => <option key={t.id} value={t.id}>{t.lastName.toUpperCase()} {t.firstName}</option>)}
+                    </select>
                 </div>
+            </div>
+            <div className="flex justify-end gap-2 mb-4 print:hidden">
+                 <button onClick={handlePrint} disabled={!selectedTraineeId} className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:bg-gray-400"><PrinterIcon /> Imprimer</button>
+                 <button onClick={handleDownloadPdf} disabled={!selectedTraineeId} className="flex items-center bg-gray-700 text-white px-4 py-2 rounded-md hover:bg-gray-800 disabled:bg-gray-400"><DownloadIcon /> PDF</button>
             </div>
 
             {selectedTrainee ? (
@@ -1467,15 +1689,22 @@ const DonneesPersonnellesView = ({ allYearsData, establishmentInfo, globalFilter
                         <div className="space-y-6">
                             <div>
                                 <h4 className="font-bold text-xl mb-3 pb-2 border-b-2 border-blue-200 text-blue-800">Bilan d'Assiduité</h4>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
                                     <div className="p-3 bg-red-50 rounded-lg"><div className="text-2xl font-bold text-red-600">{(traineeAbsenceStats?.totalAbsenceDays || 0) * 2 * SESSION_DURATION}</div><div className="text-sm text-gray-600">Heures d'Absence (A)</div></div>
                                     <div className="p-3 bg-yellow-50 rounded-lg"><div className="text-2xl font-bold text-yellow-700">{traineeAbsenceStats?.retardCount || 0}</div><div className="text-sm text-gray-600">Retards</div></div>
-                                    <div className={`p-3 rounded-lg ${getSanctionStyle(traineeAbsenceStats?.sanction || null)}`}><div className="text-xl font-bold ">{traineeAbsenceStats?.sanction?.sanction || 'Aucune'}</div><div className="text-sm">Sanction d'assiduité</div></div>
+                                    <div className={`p-3 rounded-lg col-span-2 sm:col-span-1 ${getSanctionStyle(traineeAbsenceStats?.sanction || null)}`}><div className="text-xl font-bold ">{traineeAbsenceStats?.sanction?.sanction || 'Aucune'}</div><div className="text-sm">Sanction d'assiduité</div></div>
                                 </div>
                             </div>
 
                             <div>
-                                <h4 className="font-bold text-xl mb-3 pb-2 border-b-2 border-blue-200 text-blue-800">Historique Comportemental</h4>
+                                <h4 className="font-bold text-xl mb-3 pb-2 border-b-2 border-blue-200 text-blue-800">Bilan Comportemental</h4>
+                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
+                                    <div className="p-3 bg-orange-50 rounded-lg"><div className="text-2xl font-bold text-orange-700">{traineeBehaviorStats?.incidentCount || 0}</div><div className="text-sm text-gray-600">Incidents</div></div>
+                                    <div className={`p-3 rounded-lg col-span-2 ${getBehaviorSanctionStyle(traineeBehaviorStats?.sanction || null)}`}><div className="text-xl font-bold ">{traineeBehaviorStats?.sanction?.sanction || 'Aucune'}</div><div className="text-sm">Sanction comportementale</div></div>
+                                </div>
+                            </div>
+                             <div>
+                                <h4 className="font-bold text-xl mb-3 pb-2 border-b-2 border-blue-200 text-blue-800">Historique des Incidents</h4>
                                 {selectedTrainee.behavior && selectedTrainee.behavior.length > 0 ? (
                                     <ul className="space-y-2">
                                         {selectedTrainee.behavior.map((incident, index) => (
@@ -1495,24 +1724,109 @@ const DonneesPersonnellesView = ({ allYearsData, establishmentInfo, globalFilter
     );
 };
 
-const HistoryView = ({ allYearsData, establishmentInfo, setAllData, setArchivedData, setCurrentTrainingYear, currentTrainingYear }: { allYearsData: any, establishmentInfo: any, setAllData: any, setArchivedData: any, setCurrentTrainingYear: any, currentTrainingYear: string }) => <PlaceholderView name="Historique" />;
+const HistoryView = () => {
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-lg space-y-8">
+             <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Archivage</h2>
+                <div className="border p-4 rounded-lg bg-gray-50">
+                    <p className="text-gray-600 mb-4">La fonctionnalité d'archivage des années de formation sera disponible dans une future mise à jour.</p>
+                    <button disabled className="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg cursor-not-allowed">
+                        Archiver l'année en cours (Bientôt disponible)
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
-const DataView = ({ allData, setAllData, setAlertState }: { allData: TrainingData, setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, setAlertState: React.Dispatch<React.SetStateAction<AlertState>> }) => {
-    const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+const DataView = ({ allData, setAllData, setAlertState, establishmentInfo, setEstablishmentInfo, session }: { allData: TrainingData, setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, setAlertState: React.Dispatch<React.SetStateAction<AlertState>>, establishmentInfo: { name: string, logo: string | null }, setEstablishmentInfo: React.Dispatch<React.SetStateAction<{ name: string, logo: string | null }>>, session: Session }) => {
+    const [editingFiliereId, setEditingFiliereId] = useState<string | null>(null);
     const [tempAnnualHours, setTempAnnualHours] = useState<number>(0);
+    const [localEstablishmentInfo, setLocalEstablishmentInfo] = useState(establishmentInfo);
+    const logoInputRef = useRef<HTMLInputElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    useEffect(() => {
+        setLocalEstablishmentInfo(establishmentInfo);
+    }, [establishmentInfo]);
 
-    const handleEditHours = (group: Group) => {
-        setEditingGroupId(group.id);
-        setTempAnnualHours(group.annualHours);
+    const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                const workbook = window.XLSX.read(data, { type: 'array' });
+
+                const traineesSheet = workbook.Sheets['Stagiaires'];
+                const groupsSheet = workbook.Sheets['Groupes'];
+                const filieresSheet = workbook.Sheets['Filieres'];
+                const levelsSheet = workbook.Sheets['Niveaux'];
+                
+                if (!traineesSheet || !groupsSheet || !filieresSheet || !levelsSheet) {
+                    throw new Error("Le fichier Excel doit contenir les feuilles: 'Stagiaires', 'Groupes', 'Filieres', 'Niveaux'.");
+                }
+
+                const trainees: Trainee[] = window.XLSX.utils.sheet_to_json(traineesSheet).map((row: any) => ({
+                    id: String(row.id),
+                    cef: String(row.cef),
+                    firstName: row.firstName,
+                    lastName: row.lastName,
+                    birthDate: row.birthDate.includes('/') ? parseDateDDMMYYYY(row.birthDate) : convertExcelDate(row.birthDate),
+                    groupId: String(row.groupId),
+                    absences: {},
+                    behavior: [],
+                }));
+
+                const groups: Group[] = window.XLSX.utils.sheet_to_json(groupsSheet).map((row: any) => ({
+                    id: String(row.id),
+                    name: row.name,
+                    filiereId: String(row.filiereId),
+                    trainingYear: row.trainingYear,
+                    annualHours: Number(row.annualHours),
+                }));
+                
+                const filieres: Filiere[] = window.XLSX.utils.sheet_to_json(filieresSheet).map((row: any) => ({
+                     id: String(row.id), name: row.name, levelId: String(row.levelId)
+                }));
+
+                const levels: Level[] = window.XLSX.utils.sheet_to_json(levelsSheet).map((row: any) => ({
+                     id: String(row.id), name: row.name 
+                }));
+                
+                setAllData({ levels, filieres, groups, trainees });
+                setAlertState({ isOpen: true, type: 'success', title: 'Importation Réussie', message: 'Les données ont été importées avec succès.' });
+
+            } catch (error: any) {
+                console.error(error);
+                setAlertState({ isOpen: true, type: 'error', title: "Erreur d'Importation", message: error.message });
+            }
+        };
+        reader.readAsArrayBuffer(file);
     };
 
-    const handleSaveHours = (groupId: string) => {
+    const handleEditHours = (filiere: Filiere) => {
+        setEditingFiliereId(filiere.id);
+        // Find the annual hours from the first group of that filiere to pre-fill the input
+        const firstGroupOfFiliere = allData.groups.find(g => g.filiereId === filiere.id);
+        setTempAnnualHours(firstGroupOfFiliere ? firstGroupOfFiliere.annualHours : 0);
+    };
+
+    const handleSaveHours = (filiereId: string) => {
         setAllData(prev => ({
             ...prev,
-            groups: prev.groups.map(g => g.id === groupId ? { ...g, annualHours: tempAnnualHours } : g)
+            // Update the annualHours for all groups belonging to the edited filiere
+            groups: prev.groups.map(g => 
+                g.filiereId === filiereId 
+                ? { ...g, annualHours: tempAnnualHours } 
+                : g
+            )
         }));
-        setEditingGroupId(null);
-        setAlertState({ isOpen: true, type: 'success', title: 'Succès', message: 'La masse horaire a été mise à jour.' });
+        setEditingFiliereId(null);
+        setAlertState({ isOpen: true, type: 'success', title: 'Succès', message: 'La masse horaire a été mise à jour pour tous les groupes de la filière.' });
     };
 
     const handleDeleteFiliere = (filiereId: string, filiereName: string) => {
@@ -1551,6 +1865,22 @@ const DataView = ({ allData, setAllData, setAlertState }: { allData: TrainingDat
             }
         });
     };
+    
+    const handleDeleteTrainee = (traineeId: string, traineeName: string) => {
+        setAlertState({
+            isOpen: true,
+            type: 'confirm',
+            title: 'Confirmer la suppression',
+            message: `Êtes-vous sûr de vouloir supprimer le stagiaire ${traineeName} ? Cette action est irréversible.`,
+            onConfirm: () => {
+                setAllData(prev => ({
+                    ...prev,
+                    trainees: prev.trainees.filter(t => t.id !== traineeId)
+                }));
+                 setAlertState({ isOpen: true, type: 'success', title: 'Succès', message: 'Le stagiaire a été supprimé.' });
+            }
+        })
+    };
 
     const filieresByLevel = useMemo(() => {
         return allData.levels.map(level => ({
@@ -1558,65 +1888,135 @@ const DataView = ({ allData, setAllData, setAlertState }: { allData: TrainingDat
             filieres: allData.filieres.filter(f => f.levelId === level.id)
         }));
     }, [allData.levels, allData.filieres]);
+    
+    const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setLocalEstablishmentInfo(prev => ({ ...prev, logo: reader.result as string }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    
+     const handleSaveEstablishmentInfo = async () => {
+        const { error } = await supabaseClient
+            .from('establishments')
+            .upsert({ 
+                user_id: session.user.id, 
+                name: localEstablishmentInfo.name, 
+                logo_base64: localEstablishmentInfo.logo 
+            }, { onConflict: 'user_id' });
+
+        if (error) {
+            setAlertState({ isOpen: true, type: 'error', title: 'Erreur', message: "Impossible de sauvegarder les informations : " + error.message });
+        } else {
+            setEstablishmentInfo(localEstablishmentInfo);
+            setAlertState({ isOpen: true, type: 'success', title: 'Succès', message: 'Les informations de l\'établissement ont été mises à jour.' });
+        }
+    };
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-lg space-y-8">
             <div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">Gestion des Filières</h2>
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Informations de l'Établissement</h2>
+                 <div className="space-y-4 p-4 border rounded-lg">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l'établissement</label>
+                        <input 
+                            type="text" 
+                            value={localEstablishmentInfo.name} 
+                            onChange={e => setLocalEstablishmentInfo(prev => ({ ...prev, name: e.target.value }))}
+                            className={inputStyle}
+                        />
+                    </div>
+                    <div>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">Logo</label>
+                         <div className="flex items-center gap-4">
+                             {localEstablishmentInfo.logo ? <img src={localEstablishmentInfo.logo} alt="Logo" className="h-16 w-auto border p-1 rounded-md" /> : <div className="h-16 w-24 border flex items-center justify-center text-xs text-gray-500 bg-gray-50 rounded-md">Aucun logo</div>}
+                             <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" ref={logoInputRef} />
+                             <button onClick={() => logoInputRef.current?.click()} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-md">Changer le logo</button>
+                         </div>
+                    </div>
+                    <div className="flex justify-end">
+                        <button onClick={handleSaveEstablishmentInfo} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Sauvegarder les informations</button>
+                    </div>
+                </div>
+            </div>
+             <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Importer des Données</h2>
+                <div className="border p-4 rounded-lg bg-gray-50">
+                    <p className="text-gray-600 mb-4">Importez des stagiaires, groupes, et filières depuis un fichier Excel (.xlsx). Le fichier doit contenir 4 feuilles nommées "Niveaux", "Filieres", "Groupes", et "Stagiaires" avec les colonnes correspondantes.</p>
+                    <input type="file" accept=".xlsx" onChange={handleFileImport} className="hidden" ref={fileInputRef} />
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">
+                        <UploadIcon /> Choisir un fichier
+                    </button>
+                </div>
+            </div>
+            <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Gestion des Filières et Masse Horaire</h2>
                 <div className="space-y-4">
                     {filieresByLevel.map(level => (
                         <div key={level.id}>
                             <h3 className="text-lg font-semibold text-gray-700 mb-2">{level.name}</h3>
                             <ul className="space-y-2">
-                                {level.filieres.map(filiere => (
-                                    <li key={filiere.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
-                                        <span>{filiere.name}</span>
-                                        <button onClick={() => handleDeleteFiliere(filiere.id, filiere.name)} className="text-red-500 hover:text-red-700"><DeleteIcon /></button>
-                                    </li>
-                                ))}
+                                {level.filieres.map(filiere => {
+                                    const filiereHours = allData.groups.find(g => g.filiereId === filiere.id)?.annualHours || 0;
+                                    return (
+                                        <li key={filiere.id} className="flex flex-wrap justify-between items-center bg-gray-50 p-3 rounded-md gap-2">
+                                            <div className="font-medium">{filiere.name}</div>
+                                            <div className="flex items-center gap-2">
+                                                {editingFiliereId === filiere.id ? (
+                                                    <input 
+                                                        type="number" 
+                                                        value={tempAnnualHours} 
+                                                        onChange={e => setTempAnnualHours(Number(e.target.value))}
+                                                        className="p-1 border rounded w-28 text-center"
+                                                    />
+                                                ) : (
+                                                    <span className="font-semibold bg-blue-100 text-blue-800 px-2 py-1 rounded-md">{filiereHours} heures/an</span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {editingFiliereId === filiere.id ? (
+                                                    <>
+                                                        <button onClick={() => handleSaveHours(filiere.id)} className="p-1 text-green-600 hover:bg-green-100 rounded-full"><SaveIcon /></button>
+                                                        <button onClick={() => setEditingFiliereId(null)} className="p-1 text-gray-500 hover:bg-gray-200 rounded-full"><CancelIcon /></button>
+                                                    </>
+                                                ) : (
+                                                    <button onClick={() => handleEditHours(filiere)} className="p-1 text-blue-600 hover:bg-blue-100 rounded-full"><EditIcon /></button>
+                                                )}
+                                                <button onClick={() => handleDeleteFiliere(filiere.id, filiere.name)} className="p-1 text-red-500 hover:bg-red-100 rounded-full"><DeleteIcon /></button>
+                                            </div>
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         </div>
                     ))}
                 </div>
             </div>
             <div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">Gestion des Groupes</h2>
-                <div className="overflow-x-auto">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Gestion des Stagiaires</h2>
+                <div className="overflow-x-auto border rounded-lg">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-100">
+                        <thead className="bg-gray-100 text-left">
                             <tr>
-                                <th className="p-2 text-left">Nom du Groupe</th>
-                                <th className="p-2 text-left">Filière</th>
-                                <th className="p-2 text-left">Masse Horaire Annuelle</th>
-                                <th className="p-2 text-center">Actions</th>
+                                <th className="p-3 font-semibold">Nom & Prénom</th>
+                                <th className="p-3 font-semibold">Groupe</th>
+                                <th className="p-3 font-semibold text-center">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {allData.groups.map(group => (
-                                <tr key={group.id} className="border-b">
-                                    <td className="p-2 font-medium">{group.name}</td>
-                                    <td className="p-2">{allData.filieres.find(f => f.id === group.filiereId)?.name}</td>
-                                    <td className="p-2">
-                                        {editingGroupId === group.id ? (
-                                            <input 
-                                                type="number" 
-                                                value={tempAnnualHours} 
-                                                onChange={e => setTempAnnualHours(Number(e.target.value))}
-                                                className="p-1 border rounded w-24"
-                                            />
-                                        ) : (
-                                            <span>{group.annualHours} heures</span>
-                                        )}
-                                    </td>
-                                    <td className="p-2 text-center">
-                                        {editingGroupId === group.id ? (
-                                            <div className="flex gap-2 justify-center">
-                                                <button onClick={() => handleSaveHours(group.id)} className="text-green-600"><SaveIcon /></button>
-                                                <button onClick={() => setEditingGroupId(null)} className="text-red-600"><CancelIcon /></button>
-                                            </div>
-                                        ) : (
-                                            <button onClick={() => handleEditHours(group)} className="text-blue-600"><EditIcon /></button>
-                                        )}
+                        <tbody className="divide-y divide-gray-200">
+                            {allData.trainees.map(trainee => (
+                                <tr key={trainee.id} className="hover:bg-gray-50">
+                                    <td className="p-3 font-medium">{trainee.lastName.toUpperCase()} {trainee.firstName}</td>
+                                    <td className="p-3">{allData.groups.find(g => g.id === trainee.groupId)?.name}</td>
+                                    <td className="p-3 text-center">
+                                         <button onClick={() => handleDeleteTrainee(trainee.id, `${trainee.lastName} ${trainee.firstName}`)} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100">
+                                            <DeleteIcon />
+                                        </button>
                                     </td>
                                 </tr>
                             ))}

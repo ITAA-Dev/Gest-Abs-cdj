@@ -27,10 +27,10 @@ export const initialFilieres: Filiere[] = [
 ];
 
 export const initialGroups: Group[] = [
-  { id: 'G1', name: 'DEV101', filiereId: 'F1', annualHours: 1200, trainingYear: '2023-2024' },
-  { id: 'G2', name: 'DEV102', filiereId: 'F1', annualHours: 1200, trainingYear: '2023-2024' },
-  { id: 'G3', name: 'ID101', filiereId: 'F2', annualHours: 1100, trainingYear: '2023-2024' },
-  { id: 'G4', name: 'GE101', filiereId: 'F3', annualHours: 900, trainingYear: '2023-2024' },
+  { id: 'G1', name: 'DEV101', filiereId: 'F1', trainingYear: '2023-2024', annualHours: 1200 },
+  { id: 'G2', name: 'DEV102', filiereId: 'F1', trainingYear: '2023-2024', annualHours: 1200 },
+  { id: 'G3', name: 'ID101', filiereId: 'F2', trainingYear: '2023-2024', annualHours: 1100 },
+  { id: 'G4', name: 'GE101', filiereId: 'F3', trainingYear: '2023-2024', annualHours: 900 },
 ];
 
 export const initialTrainees: Trainee[] = [

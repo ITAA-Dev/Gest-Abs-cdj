@@ -26,8 +26,8 @@ export interface Group {
   id: string;
   name: string;
   filiereId: string;
-  annualHours: number;
   trainingYear: string;
+  annualHours: number;
 }
 
 export interface Filiere {
