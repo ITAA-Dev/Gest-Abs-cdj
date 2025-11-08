@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js'
 
 // ✅ AVEC VOS VRAIES VALEURS

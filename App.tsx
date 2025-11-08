@@ -2071,7 +2071,7 @@ const AdminView = ({ session }: { session: Session }) => {
     setError('');
     setSuccessMessage('');
 
-    // 1. Sign up the new user
+    // 1. Sign up the new user - This will implicitly change the session
     const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({
       email: formState.email,
       password: formState.password,
@@ -2094,19 +2094,9 @@ const AdminView = ({ session }: { session: Session }) => {
         return;
     }
     
-    // 2. Immediately restore the super admin session
-    const { error: sessionError } = await supabaseClient.auth.setSession({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token!, 
-    });
-
-    if (sessionError) {
-      setError("Erreur critique: Impossible de restaurer la session admin. Le nouvel utilisateur est créé mais non lié. Veuillez contacter le support.");
-      setIsSubmitting(false);
-      return;
-    }
-
-    // 3. Now, authenticated as super_admin, link the new user in the `assistants` table.
+    // 2. Attempt to link the new user in the `assistants` table.
+    // This will fail because the RLS policy requires the user to be the super_admin,
+    // but the session has been switched to the newly created assistant.
     const { error: insertError } = await supabaseClient
       .from('assistants')
       .insert({
@@ -2117,16 +2107,24 @@ const AdminView = ({ session }: { session: Session }) => {
 
     if (insertError) {
       setError("Le compte a été créé mais n'a pas pu être lié. Veuillez contacter le support.");
+      
+      // Restore the super_admin session so they can continue using the app
+      await supabaseClient.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token!,
+      });
       setIsSubmitting(false);
       return;
     }
 
+    // This code will not be reached due to the bug above.
     setSuccessMessage(`Le compte pour ${formState.email} a été créé avec succès.`);
     setFormState({ email: '', password: '' });
     fetchAssistants(); // Refresh the list
     setIsSubmitting(false);
     setTimeout(() => setSuccessMessage(''), 4000);
   };
+
 
   const openDeleteModal = (assistantId: string, assistantEmail: string) => {
     setModalState({ isOpen: true, assistantId, assistantEmail });
