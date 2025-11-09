@@ -6,30 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { supabaseClient } from './supabaseClient';
 import Auth from './Auth';
 import { Session } from '@supabase/supabase-js';
-
-// A placeholder for the main application component
-const Dashboard = ({ session }: { session: Session }) => {
-    const handleSignOut = async () => {
-        await supabaseClient.auth.signOut();
-    };
-
-    return (
-        <div className="container mx-auto p-4">
-            <div className="flex justify-between items-center mb-4">
-                <h1 className="text-2xl font-bold">Welcome, {session.user.email}</h1>
-                <button
-                    onClick={handleSignOut}
-                    className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
-                >
-                    Sign Out
-                </button>
-            </div>
-            <p>Your application content goes here.</p>
-            {/* Here you would build out the main UI for managing absences */}
-        </div>
-    );
-};
-
+import Dashboard from './Dashboard';
 
 const App = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -50,7 +27,8 @@ const App = () => {
 
   return (
     <div className="App">
-      {!session ? <Auth /> : <Dashboard session={session} key={session.user.id} />}
+      {/* FIX: Removed the key prop to match the component's prop types and resolve the assignment error. */}
+      {!session ? <Auth /> : <Dashboard session={session} />}
     </div>
   );
 };
