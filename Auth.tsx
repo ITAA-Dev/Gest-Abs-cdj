@@ -1,146 +1,112 @@
 import React, { useState } from 'react';
-import { supabaseClient } from './supabaseClient';
+import { supabase } from './supabase';
 
-const GoogleIcon = () => (
-  <svg className="w-5 h-5" viewBox="0 0 48 48">
-    <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12
-      s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24
-      s8.955,20,20,20s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path>
-    <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657
-      C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path>
-    <path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36
-      c-5.222,0-9.519-3.317-11.277-7.962l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path>
-    <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571
-      l6.19,5.238C42.02,35.62,44,30.038,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path>
-  </svg>
-);
+const GoogleIcon = () => <svg className="w-5 h-5" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 381.5 512 244 512 110.3 512 0 398.8 0 261.8 0 127.3 105.8 16.3 244 16.3c67.7 0 120.3 26.1 166.3 69.6l-67.8 65.7c-24.6-23.3-58.4-38-98.5-38-74.9 0-136.6 61.2-136.6 137.2 0 75.9 61.7 137.2 136.6 137.2 88.5 0 113.1-66.8 116.5-98.2H244v-75.5h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path></svg>;
 
-const Auth = () => {
-  const [isLogin, setIsLogin] = useState(true);
+const inputStyle = "w-full p-2 border border-gray-300 rounded-md bg-white shadow-sm focus:ring-blue-500 focus:border-blue-500 transition";
+
+export const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
 
-  const handleAuthAction = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setMessage('');
-
-    try {
-      let response;
-      if (isLogin) {
-        response = await supabaseClient.auth.signInWithPassword({ email, password });
-      } else {
-        response = await supabaseClient.auth.signUp({ email, password });
-        if (!response.error) {
-            setMessage('Compte créé ! Veuillez vérifier votre e-mail pour activer votre compte.');
-        }
-      }
-      if (response.error) throw response.error;
-    } catch (error: any) {
-      setError(error.error_description || error.message);
-    } finally {
-      setLoading(false);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setError(error.message);
     }
+    setLoading(false);
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
-    const { error } = await supabaseClient.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
     });
     if (error) {
       setError(error.message);
       setLoading(false);
     }
+    // The user will be redirected to Google and then back to the app.
+    // The onAuthStateChange listener in App.tsx will handle the session.
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
-      <div className="max-w-md w-full mx-auto bg-white shadow-xl rounded-2xl overflow-hidden">
-        <div className="bg-blue-800 p-6">
-            <h1 className="text-3xl font-bold text-white text-center">Gestion des Absences</h1>
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg">
+        <div className="text-center mb-6">
+            <h1 className="text-3xl font-bold text-blue-800">E-Presence</h1>
+            <p className="text-gray-500">Solution Digitale</p>
         </div>
-        <div className="p-8">
-          <h2 className="text-2xl font-bold text-gray-800 text-center mb-4">
-            {isLogin ? 'Se Connecter' : 'Créer un Compte'}
-          </h2>
+        
+        <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">
+          Se Connecter
+        </h2>
+        <p className="text-center text-sm text-gray-500 mb-6">
+          Bienvenue !
+        </p>
 
-          {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative mb-4" role="alert">{error}</div>}
-          {message && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-md relative mb-4" role="alert">{message}</div>}
+        {error && (
+          <p className="bg-red-50 text-red-600 text-sm text-center font-semibold p-3 rounded-md mb-4 animate-shake">
+            {error}
+          </p>
+        )}
 
-          <form onSubmit={handleAuthAction}>
-            <div className="mb-4">
-              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
-                Adresse Email
-              </label>
-              <input
-                id="email"
-                className="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                type="email"
-                placeholder="vous@exemple.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="mb-6">
-              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
-                Mot de passe
-              </label>
-              <input
-                id="password"
-                className="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 mb-3 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                type="password"
-                placeholder="******************"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <button
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full transition-transform transform hover:scale-105 disabled:bg-blue-400"
-                type="submit"
-                disabled={loading}
-              >
-                {loading ? 'Chargement...' : (isLogin ? 'Se Connecter' : "S'inscrire")}
-              </button>
-            </div>
-          </form>
-
-          <div className="my-6 flex items-center">
-            <div className="flex-grow border-t border-gray-300"></div>
-            <span className="flex-shrink mx-4 text-gray-400">OU</span>
-            <div className="flex-grow border-t border-gray-300"></div>
-          </div>
-
+        <div className="space-y-4">
           <button
-            onClick={handleGoogleSignIn}
+            onClick={handleGoogleLogin}
             disabled={loading}
-            className="bg-white border border-gray-300 hover:bg-gray-100 text-gray-800 font-bold py-3 px-4 rounded-lg focus:outline-none focus:shadow-outline w-full flex items-center justify-center transition-colors disabled:bg-gray-200"
+            className="w-full inline-flex items-center justify-center gap-3 px-4 py-3 bg-white border border-gray-300 rounded-lg shadow-sm text-gray-700 font-semibold hover:bg-gray-50 transition-all disabled:opacity-50"
           >
             <GoogleIcon />
-            <span className="ml-3">Continuer avec Google</span>
+            {loading ? 'Redirection...' : 'Se connecter avec Google'}
           </button>
 
-          <p className="text-center text-gray-500 text-sm mt-8">
-            {isLogin ? "Vous n'avez pas de compte ?" : 'Vous avez déjà un compte ?'}
+          <div className="flex items-center">
+            <hr className="flex-grow border-t border-gray-300" />
+            <span className="px-2 text-xs font-semibold text-gray-400">OU</span>
+            <hr className="flex-grow border-t border-gray-300" />
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={inputStyle}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputStyle}
+                required
+              />
+            </div>
             <button
-              onClick={() => { setIsLogin(!isLogin); setError(''); }}
-              className="font-bold text-blue-600 hover:text-blue-800 ml-2"
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400"
             >
-              {isLogin ? "S'inscrire" : 'Se connecter'}
+              {loading ? 'Connexion...' : 'Se connecter'}
             </button>
+          </form>
+          <p className="text-xs text-center text-gray-500 mt-4">
+            Pour créer un compte, connectez-vous d'abord avec Google. Le premier utilisateur devient Super Administrateur. Les autres comptes (assistants) sont créés par le Super Administrateur.
           </p>
         </div>
       </div>
     </div>
   );
 };
-
-export default Auth;
