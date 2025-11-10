@@ -1,5 +1,5 @@
 {
-  "name": "Gestionnaire d'Absences Stagiaires LOG 2",
+  "name": "Gestionnaire d'Absences Stagiaires LOG 3",
   "description": "Une application web pour suivre et gérer les absences des stagiaires. Inclut la saisie par semaine, un tableau de bord analytique, la gestion des données et un historique des années de formation.",
   "requestFramePermissions": []
 }

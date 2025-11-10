@@ -1,7 +1,7 @@
 // FIX: Corrected the React import statement to properly import React and its hooks. This resolves all subsequent "Cannot find name" errors in the file.
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { initialLevels, initialFilieres, initialGroups, initialTrainees, DAYS, SESSIONS, SESSION_DURATION, RETARD_VALUE, ABSENCE_TYPES } from './constants';
-import type { Trainee, Group, Filiere, Level, TrainingData, ArchivedData, AbsenceType, BehaviorIncident, User } from './types';
+import type { Trainee, Group, Filiere, Level, TrainingData, ArchivedData, AbsenceType, BehaviorIncident, User, Assistant } from './types';
 import { Auth } from './Auth';
 
 
@@ -11,9 +11,16 @@ declare global {
         XLSX: any;
         html2canvas: any;
         jspdf: any;
+        supabase: any;
     }
 }
 
+const { createClient } = window.supabase;
+const supabaseConfig = {
+  url: "https://rixlblpzyoygpzbktdsz.supabase.co",
+  anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpeGxibHB6eW95Z3B6Ymt0ZHN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNTE0NTksImV4cCI6MjA3NzkyNzQ1OX0.zNHLbPjU55Db0CFi30SBJgVDI4vPvYzyo5vTZUwsXyk"
+};
+const supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey);
 
 // --- ICONS ---
 const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>;
@@ -189,7 +196,8 @@ const getWeekStartDate = (date: Date) => {
 
 const getAcademicYearMonths = (year: string) => {
     if (!year || !year.includes('-')) return [];
-    const [startYear] = year.split('-').map(Number);
+    // FIX: Replaced map(Number) with an explicit lambda to resolve a potential toolchain issue with function references.
+    const [startYear] = year.split('-').map(y => Number(y));
     const months = [];
     const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
     for (let i = 8; i < 12; i++) { // Sept to Dec
@@ -204,7 +212,8 @@ const getAcademicYearMonths = (year: string) => {
 const getWeeksForMonth = (month: string) => { // month is YYYY-MM
     const weeks: Date[] = [];
     if (!month) return weeks;
-    const [year, monthIndex] = month.split('-').map(Number);
+    // FIX: Replaced map(Number) with an explicit lambda to resolve a potential toolchain issue with function references.
+    const [year, monthIndex] = month.split('-').map(m => Number(m));
     const firstDayOfMonth = new Date(year, monthIndex - 1, 1);
     
     let current = new Date(firstDayOfMonth);
@@ -247,30 +256,6 @@ const convertExcelDate = (excelDate: number) => {
     const date = new Date((excelDate - 25569) * 86400 * 1000);
     return date.toISOString().split('T')[0];
 };
-
-// --- Custom Hook for localStorage ---
-const useStateWithLocalStorage = (storageKey: string, defaultValue: any) => {
-    const [value, setValue] = useState(() => {
-        try {
-            const item = window.localStorage.getItem(storageKey);
-            return item ? JSON.parse(item) : defaultValue;
-        } catch (error) {
-            console.error(`Error reading localStorage key “${storageKey}”:`, error);
-            return defaultValue;
-        }
-    });
-
-    useEffect(() => {
-        try {
-            window.localStorage.setItem(storageKey, JSON.stringify(value));
-        } catch (error) {
-            console.error(`Error setting localStorage key “${storageKey}”:`, error);
-        }
-    }, [storageKey, value]);
-
-    return [value, setValue];
-};
-
 
 // --- UI STYLES ---
 const inputStyle = "w-full p-2 border border-gray-300 rounded-md bg-white shadow-sm focus:ring-blue-500 focus:border-blue-500 transition";
@@ -333,32 +318,199 @@ const ExportHeader = ({ establishmentInfo, trainingYear, title, subtitle }: {
   </header>
 );
 
+const initialAppData = {
+    allData: {
+        levels: initialLevels,
+        filieres: initialFilieres,
+        groups: initialGroups,
+        trainees: initialTrainees,
+    },
+    archivedData: {},
+    currentTrainingYear: '2023-2024',
+};
+
 // --- MAIN APP COMPONENT ---
 function App() {
-  // --- STATE MANAGEMENT ---
-  const [users, setUsers] = useStateWithLocalStorage('app_users', []);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loginError, setLoginError] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  const [establishmentInfo, setEstablishmentInfo] = useStateWithLocalStorage('app_establishment_info', {
+  const [establishmentInfo, setEstablishmentInfo] = useState({
     name: 'Mon Établissement de Formation',
     logo: null as string | null,
   });
 
-  const [allData, setAllData] = useStateWithLocalStorage('app_all_data', {
-    levels: initialLevels,
-    filieres: initialFilieres,
-    groups: initialGroups,
-    trainees: initialTrainees,
-  });
+  const [allData, setAllData] = useState<TrainingData>(initialAppData.allData);
+  const [archivedData, setArchivedData] = useState<ArchivedData>(initialAppData.archivedData);
+  const [currentTrainingYear, setCurrentTrainingYear] = useState<string>(initialAppData.currentTrainingYear);
+  const [assistants, setAssistants] = useState<Assistant[]>([]);
+  const appDataRef = useRef<any>();
 
-  const [archivedData, setArchivedData] = useStateWithLocalStorage('app_archived_data', {});
+  useEffect(() => {
+        appDataRef.current = {
+            allData,
+            archivedData,
+            currentTrainingYear,
+        };
+    }, [allData, archivedData, currentTrainingYear]);
 
-  // Determine current training year dynamically or set a default
-  const [currentTrainingYear, setCurrentTrainingYear] = useStateWithLocalStorage('app_current_training_year', () => {
-    const allYearsInGroups = allData.groups.map((g: Group) => g.trainingYear);
-    return allYearsInGroups.length > 0 ? allYearsInGroups.sort().reverse()[0] : '2023-2024';
-  });
+  const updateSupabaseData = useCallback(async (dataToUpdate: any) => {
+    if (!currentUser) return;
+    const { data, error } = await supabase
+        .from('establishment_data')
+        .update({ app_data: dataToUpdate })
+        .eq('establishment_id', currentUser.establishment_id);
+
+    if (error) console.error("Error updating app data:", error);
+  }, [currentUser]);
+
+  const wrappedSetAllData = (value: React.SetStateAction<TrainingData>) => {
+        const newData = typeof value === 'function' ? value(allData) : value;
+        setAllData(newData);
+        updateSupabaseData({ ...appDataRef.current, allData: newData });
+  };
+  const wrappedSetArchivedData = (value: React.SetStateAction<ArchivedData>) => {
+      const newData = typeof value === 'function' ? value(archivedData) : value;
+      setArchivedData(newData);
+      updateSupabaseData({ ...appDataRef.current, archivedData: newData });
+  };
+  const wrappedSetCurrentTrainingYear = (value: string) => {
+      setCurrentTrainingYear(value);
+      updateSupabaseData({ ...appDataRef.current, currentTrainingYear: value });
+  };
+   const wrappedSetEstablishmentInfo = async (value: React.SetStateAction<{name: string, logo: string | null}>) => {
+        if (!currentUser) return;
+        const newInfo = typeof value === 'function' ? value(establishmentInfo) : value;
+        setEstablishmentInfo(newInfo);
+        const { error } = await supabase
+            .from('establishments')
+            .update({ name: newInfo.name, logo_url: newInfo.logo })
+            .eq('id', currentUser.establishment_id);
+        if (error) console.error("Error updating establishment info:", error);
+    };
+
+    const fetchAssistants = useCallback(async (establishmentId: string) => {
+        const { data, error } = await supabase
+            .from('users')
+            .select('id, email, name:user_metadata->>full_name')
+            .eq('establishment_id', establishmentId)
+            .eq('role', 'admin_assistant');
+        if (data) setAssistants(data.map(a => ({...a, role: 'admin_assistant'})));
+        if(error) console.error('Error fetching assistants:', error);
+    }, []);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_OUT') {
+            setCurrentUser(null);
+            setIsLoading(false);
+        } else if (event === 'SIGNED_IN' && session) {
+            const authUser = session.user;
+            // 1. Check if user exists in our public users table
+            let { data: appUser, error: appUserError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', authUser.id)
+                .single();
+            
+            if (!appUser) { // New user sign up
+                // 2. Check if any sup_admin exists
+                const { data: supAdmins, error: countError } = await supabase
+                    .from('users')
+                    .select('id', { count: 'exact' })
+                    .eq('role', 'sup_admin');
+
+                if (supAdmins && supAdmins.length === 0) { // First user ever, make them sup_admin
+                    // 3a. Create establishment
+                    const { data: newEstablishment, error: establishmentError } = await supabase
+                        .from('establishments')
+                        .insert({
+                            sup_admin_id: authUser.id,
+                            name: `Établissement de ${authUser.user_metadata.full_name}`,
+                            logo_url: authUser.user_metadata.picture,
+                        })
+                        .select()
+                        .single();
+
+                    if (establishmentError) throw establishmentError;
+
+                    // 3b. Create corresponding establishment_data row
+                    const { error: dataError } = await supabase
+                        .from('establishment_data')
+                        .insert({
+                            establishment_id: newEstablishment.id,
+                            app_data: initialAppData
+                        });
+                    if(dataError) throw dataError;
+
+                    // 3c. Create user record in public.users
+                    const { data: newUser, error: newUserError } = await supabase
+                        .from('users')
+                        .insert({
+                            id: authUser.id,
+                            email: authUser.email,
+                            role: 'sup_admin',
+                            establishment_id: newEstablishment.id,
+                        })
+                        .select()
+                        .single();
+                    if (newUserError) throw newUserError;
+                    appUser = newUser;
+
+                } else { // sup_admin exists, new signups are not allowed
+                    setLoginError("Ce compte n'est pas autorisé. Veuillez contacter votre administrateur.");
+                    await supabase.auth.signOut();
+                    setIsLoading(false);
+                    return;
+                }
+            }
+            
+            // User exists, load their data
+            const { data: establishmentData, error: estError } = await supabase
+                .from('establishments')
+                .select('*, establishment_data(*)')
+                .eq('id', appUser.establishment_id)
+                .single();
+            
+            if (establishmentData) {
+                setEstablishmentInfo({ name: establishmentData.name, logo: establishmentData.logo_url });
+                const loadedAppData = establishmentData.establishment_data[0]?.app_data;
+                if(loadedAppData) {
+                    setAllData(loadedAppData.allData || initialAppData.allData);
+                    setArchivedData(loadedAppData.archivedData || initialAppData.archivedData);
+                    setCurrentTrainingYear(loadedAppData.currentTrainingYear || initialAppData.currentTrainingYear);
+                }
+                
+                const finalUser: User = {
+                    id: authUser.id,
+                    email: authUser.email!,
+                    name: authUser.user_metadata.full_name,
+                    picture: authUser.user_metadata.picture,
+                    role: appUser.role,
+                    establishment_id: appUser.establishment_id,
+                };
+                setCurrentUser(finalUser);
+
+                if (finalUser.role === 'sup_admin') {
+                   await fetchAssistants(finalUser.establishment_id);
+                }
+
+            } else {
+                setLoginError("Impossible de charger les données de l'établissement.");
+                await supabase.auth.signOut();
+            }
+             setIsLoading(false);
+        }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [fetchAssistants]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+  };
   
   // --- MEMOIZED DERIVED STATE ---
   const trainingYears = useMemo(() => {
@@ -384,55 +536,13 @@ function App() {
     
   const allYearsData = useMemo(() => ({...archivedData, [currentTrainingYear]: currentYearData}), [archivedData, currentTrainingYear, currentYearData]);
 
-  // --- "REAL-TIME" SYNC EFFECT ---
-  useEffect(() => {
-    const syncState = (e: StorageEvent) => {
-      if (!e.key || !e.newValue) return;
-      try {
-        const newValue = JSON.parse(e.newValue);
-        switch (e.key) {
-          case 'app_users':
-            setUsers(newValue);
-            break;
-          case 'app_establishment_info':
-            setEstablishmentInfo(newValue);
-            break;
-          case 'app_all_data':
-            setAllData(newValue);
-            break;
-          case 'app_archived_data':
-            setArchivedData(newValue);
-            break;
-          case 'app_current_training_year':
-            setCurrentTrainingYear(newValue);
-            break;
-        }
-      } catch (error) {
-        console.error("Failed to parse storage update:", error);
-      }
-    };
-
-    window.addEventListener('storage', syncState);
-    return () => window.removeEventListener('storage', syncState);
-  }, []); // Dependencies are stable setters from useState, so this runs once.
-
-  // --- HANDLERS ---
-  const handleAuthSuccess = (user: User) => {
-    setCurrentUser(user);
-    if (user.role === 'superAdmin' && establishmentInfo.name === 'Mon Établissement de Formation') {
-        setActiveTab('donnees'); // Redirect to settings for initial setup
-    } else {
-        setActiveTab('dashboard');
-    }
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-  };
-
   // --- RENDER LOGIC ---
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center">Chargement...</div>;
+  }
+  
   if (!currentUser) {
-    return <Auth onAuthSuccess={handleAuthSuccess} users={users} setUsers={setUsers} />;
+    return <Auth loginError={loginError} />;
   }
 
   return (
@@ -446,13 +556,13 @@ function App() {
       />
       <main className="p-4 sm:p-6 md:p-8">
         {activeTab === 'dashboard' && <DashboardView allYearsData={allYearsData} />}
-        {activeTab === 'saisie' && <AbsenceSaisieView data={currentYearData} setAllData={setAllData} availableYears={trainingYears} currentYear={currentTrainingYear} setCurrentYear={setCurrentTrainingYear} />}
+        {activeTab === 'saisie' && <AbsenceSaisieView data={currentYearData} setAllData={wrappedSetAllData} availableYears={trainingYears} currentYear={currentTrainingYear} setCurrentYear={wrappedSetCurrentTrainingYear} />}
         {activeTab === 'assiduite' && <AssiduiteView allYearsData={allYearsData} />}
-        {activeTab === 'comportement' && <ComportementView allYearsData={allYearsData} setAllData={setAllData} setArchivedData={setArchivedData} currentTrainingYear={currentTrainingYear} />}
+        {activeTab === 'comportement' && <ComportementView allYearsData={allYearsData} setAllData={wrappedSetAllData} setArchivedData={wrappedSetArchivedData} currentTrainingYear={currentTrainingYear} />}
         {activeTab === 'donnees_personnelles' && <DonneesPersonnellesView allYearsData={allYearsData} establishmentInfo={establishmentInfo} />}
-        {activeTab === 'historique' && <HistoryView allYearsData={allYearsData} establishmentInfo={establishmentInfo} setAllData={setAllData} setArchivedData={setArchivedData} setCurrentTrainingYear={setCurrentTrainingYear} currentTrainingYear={currentTrainingYear} />}
-        {activeTab === 'donnees' && <DataView allData={allData} setAllData={setAllData} trainingYears={trainingYears} archived={archivedData} setArchived={setArchivedData} currentYear={currentTrainingYear} setCurrentTrainingYear={setCurrentTrainingYear} establishmentInfo={establishmentInfo} setEstablishmentInfo={setEstablishmentInfo} currentUser={currentUser} />}
-        {activeTab === 'admin' && currentUser.role === 'superAdmin' && <AdminView users={users} setUsers={setUsers} />}
+        {activeTab === 'historique' && <HistoryView allYearsData={allYearsData} establishmentInfo={establishmentInfo} setAllData={wrappedSetAllData} setArchivedData={wrappedSetArchivedData} setCurrentTrainingYear={wrappedSetCurrentTrainingYear} currentTrainingYear={currentTrainingYear} />}
+        {activeTab === 'donnees' && <DataView allData={allData} setAllData={wrappedSetAllData} trainingYears={trainingYears} archived={archivedData} setArchived={wrappedSetArchivedData} currentYear={currentTrainingYear} setCurrentTrainingYear={wrappedSetCurrentTrainingYear} establishmentInfo={establishmentInfo} setEstablishmentInfo={wrappedSetEstablishmentInfo} currentUser={currentUser} />}
+        {activeTab === 'admin' && currentUser.role === 'sup_admin' && <AdminView assistants={assistants} setAssistants={setAssistants} currentUser={currentUser} />}
       </main>
     </div>
   );
@@ -463,7 +573,7 @@ const Header = ({ activeTab, setActiveTab, establishmentInfo, user, onLogout }: 
     activeTab: string; 
     setActiveTab: (tab: string) => void;
     establishmentInfo: { name: string, logo: string | null };
-    user: { name: string; email: string; picture?: string, role: string };
+    user: User;
     onLogout: () => void;
 }) => {
   const allTabs = [
@@ -474,7 +584,7 @@ const Header = ({ activeTab, setActiveTab, establishmentInfo, user, onLogout }: 
     { id: 'donnees_personnelles', label: 'Données Personnelles' },
     { id: 'historique', label: 'Historique' },
     { id: 'donnees', label: 'Paramètres' },
-    { id: 'admin', label: 'Admin', role: 'superAdmin' },
+    { id: 'admin', label: 'Admin', role: 'sup_admin' },
   ];
 
   const visibleTabs = allTabs.filter(tab => !tab.role || tab.role === user.role);
@@ -483,7 +593,7 @@ const Header = ({ activeTab, setActiveTab, establishmentInfo, user, onLogout }: 
     <header className="bg-blue-800 text-white shadow-md sticky top-0 z-30 print:hidden">
        <div className="px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
         <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Gestion des Absences</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold">E-Presence - Solution Digitale</h1>
             <div className="flex items-center gap-2 mt-1">
                 {establishmentInfo.logo && <img src={establishmentInfo.logo} alt="Logo de l'établissement" className="h-8 w-auto rounded" />}
                 <h2 className="text-base sm:text-lg font-semibold text-blue-200">{establishmentInfo.name}</h2>
@@ -526,7 +636,7 @@ const Header = ({ activeTab, setActiveTab, establishmentInfo, user, onLogout }: 
 };
 
 // --- SAISIE VIEW ---
-const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setCurrentYear }: {data: TrainingData, setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, availableYears: string[], currentYear: string, setCurrentYear: (year: string) => void}) => {
+const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setCurrentYear }: {data: TrainingData, setAllData: (data: TrainingData) => void, availableYears: string[], currentYear: string, setCurrentYear: (year: string) => void}) => {
     const [saisieFilters, setSaisieFilters] = useState({ groupId: '', month: '', week: ''});
     const [saveStatus, setSaveStatus] = useState('');
     const { groupId: selectedGroupId, month: selectedMonth, week: selectedWeek } = saisieFilters;
@@ -603,7 +713,8 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
     const handleCancelDropout = () => {
         if (!dropoutCandidate) return;
 
-        setAllData(prevData => {
+        // FIX: Added explicit 'TrainingData' type to the state updater argument to resolve a TypeScript error.
+        setAllData((prevData: TrainingData) => {
             const { traineeId, date, sessionId } = dropoutCandidate;
             const newTrainees = [...prevData.trainees];
             const traineeIndex = newTrainees.findIndex(t => t.id === traineeId);
@@ -634,7 +745,8 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
 
         const { traineeId, date } = dropoutCandidate;
 
-        setAllData(prevData => {
+        // FIX: Added explicit 'TrainingData' type to the state updater argument to resolve a TypeScript error.
+        setAllData((prevData: TrainingData) => {
             const newTrainees = [...prevData.trainees];
             const traineeIndex = newTrainees.findIndex(t => t.id === traineeId);
             if (traineeIndex === -1) return prevData;
@@ -664,7 +776,8 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
     };
 
     const handleAbsenceClick = (traineeId: string, date: string, sessionId: string) => {
-        setAllData(prevData => {
+        // FIX: Corrected the state updater argument type from 'any' to 'TrainingData' to align with the expected type and resolve a TypeScript error.
+        setAllData((prevData: TrainingData) => {
             const newTrainees = [...prevData.trainees];
             const traineeIndex = newTrainees.findIndex(t => t.id === traineeId);
             if (traineeIndex === -1) return prevData;
@@ -734,6 +847,8 @@ const AbsenceSaisieView = ({ data, setAllData, availableYears, currentYear, setC
     };
     
     const handleSave = () => {
+        // Data is now saved on each click due to the wrapped setter,
+        // this button provides user feedback.
         setSaveStatus('Données sauvegardées avec succès !');
         setTimeout(() => setSaveStatus(''), 3000);
     };
@@ -1494,7 +1609,7 @@ const BehaviorModal = ({ isOpen, onClose, onSave, trainee, incident, setIncident
 };
 
 // --- COMPORTEMENT VIEW ---
-const ComportementView = ({ allYearsData, setAllData, setArchivedData, currentTrainingYear }: { allYearsData: ArchivedData & { [key: string]: TrainingData }, setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, setArchivedData: React.Dispatch<React.SetStateAction<ArchivedData>>, currentTrainingYear: string }) => {
+const ComportementView = ({ allYearsData, setAllData, setArchivedData, currentTrainingYear }: { allYearsData: ArchivedData & { [key: string]: TrainingData }, setAllData: (data: TrainingData) => void, setArchivedData: (data: ArchivedData) => void, currentTrainingYear: string }) => {
     const allYears = useMemo(() => Object.keys(allYearsData).sort((a, b) => b.localeCompare(a)), [allYearsData]);
     const [selectedYear, setSelectedYear] = useState(allYears[0] || '');
     
@@ -1592,12 +1707,14 @@ const ComportementView = ({ allYearsData, setAllData, setArchivedData, currentTr
         };
 
         if (selectedYear === currentTrainingYear) {
-            setAllData(prevData => ({
+            // FIX: Added explicit 'TrainingData' type to the state updater argument to resolve a TypeScript error.
+            setAllData((prevData: TrainingData) => ({
                 ...prevData,
                 trainees: prevData.trainees.map(updateTraineeLogic)
             }));
         } else {
-            setArchivedData(prevArchivedData => {
+            // FIX: Added explicit 'ArchivedData' type to the state updater argument to resolve a TypeScript error.
+            setArchivedData((prevArchivedData: ArchivedData) => {
                 const yearDataToUpdate = prevArchivedData[selectedYear];
                 if (!yearDataToUpdate) return prevArchivedData;
 
@@ -2104,15 +2221,15 @@ const DonneesPersonnellesView = ({ allYearsData, establishmentInfo }: {
 // --- DATA VIEW / PARAMETRES ---
 const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, currentYear, setCurrentTrainingYear, establishmentInfo, setEstablishmentInfo, currentUser }: { 
     allData: TrainingData, 
-    setAllData: React.Dispatch<React.SetStateAction<TrainingData>>, 
+    setAllData: (data: TrainingData | ((prevState: TrainingData) => TrainingData)) => void, 
     trainingYears: string[], 
     archived: ArchivedData, 
-    setArchived: React.Dispatch<React.SetStateAction<ArchivedData>>, 
+    setArchived: (data: ArchivedData | ((prevState: ArchivedData) => ArchivedData)) => void, 
     currentYear: string, 
     setCurrentTrainingYear: (year: string) => void,
     establishmentInfo: { name: string, logo: string | null },
-    setEstablishmentInfo: React.Dispatch<React.SetStateAction<{ name: string, logo: string | null }>> ,
-    currentUser: { role: string }
+    setEstablishmentInfo: (data: {name: string, logo: string | null}) => void,
+    currentUser: User
 }) => {
     const [editingFiliereId, setEditingFiliereId] = useState<string | null>(null);
     const [editedFiliereHours, setEditedFiliereHours] = useState<number>(0);
@@ -2193,7 +2310,7 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
         if (file && file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onloadend = () => {
-                setEstablishmentInfo(prev => ({ ...prev, logo: reader.result as string }));
+                setEstablishmentInfo({ ...establishmentInfo, logo: reader.result as string });
             };
             reader.readAsDataURL(file);
         } else {
@@ -2207,7 +2324,7 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
         setIsEditingName(true);
     };
     const handleSaveName = () => {
-        setEstablishmentInfo(prev => ({ ...prev, name: tempName }));
+        setEstablishmentInfo({ ...establishmentInfo, name: tempName });
         setIsEditingName(false);
     };
     const handleCancelName = () => {
@@ -2224,14 +2341,14 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
 
     const handleDeleteLogo = () => {
         openConfirmModal('Supprimer le logo', 'Êtes-vous sûr de vouloir supprimer le logo de l\'établissement ?', () => {
-            setEstablishmentInfo(prev => ({ ...prev, logo: null }));
+            setEstablishmentInfo({ ...establishmentInfo, logo: null });
             closeConfirmModal();
         });
     };
 
     const handleDeleteName = () => {
         openConfirmModal('Supprimer le nom', 'Êtes-vous sûr de vouloir supprimer le nom de l\'établissement ? Cette action est irréversible.', () => {
-            setEstablishmentInfo(prev => ({ ...prev, name: '' }));
+            setEstablishmentInfo({ ...establishmentInfo, name: '' });
             setTempName('');
             setIsEditingName(false);
             closeConfirmModal();
@@ -2456,10 +2573,11 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
                         trainees: currentYearTrainees,
                     };
 
-                    setArchived(prev => ({ ...prev, [currentYear]: dataToArchive }));
+                    setArchived({ ...archived, [currentYear]: dataToArchive });
                 }
 
-                setAllData(prevAllData => {
+                // FIX: Added explicit 'TrainingData' type to the state updater argument to resolve a TypeScript error.
+                setAllData((prevAllData: TrainingData) => {
                     let baseGroups = prevAllData.groups;
                     let baseTrainees = prevAllData.trainees;
 
@@ -2503,7 +2621,8 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
     };
 
     const handleSaveFiliere = (filiereId: string) => {
-        setAllData(prevData => {
+        // FIX: Added explicit 'TrainingData' type to the state updater argument to resolve a TypeScript error.
+        setAllData((prevData: TrainingData) => {
             const updatedGroups = prevData.groups.map(g => {
                 if (g.filiereId === filiereId && g.trainingYear === mhYear) {
                     return { ...g, annualHours: editedFiliereHours };
@@ -2522,7 +2641,8 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
             `Supprimer la filière ${filiereName} pour ${mhYear}?`,
             `Ceci supprimera tous les groupes et stagiaires associés à cette filière pour l'année ${mhYear}. Cette action est irréversible.`,
             () => {
-                setAllData(prevData => {
+                // FIX: Added explicit 'TrainingData' type to the state updater argument to resolve a TypeScript error.
+                setAllData((prevData: TrainingData) => {
                     const groupsToDelete = prevData.groups.filter(g => g.filiereId === filiereId && g.trainingYear === mhYear);
                     const groupIdsToDelete = new Set(groupsToDelete.map(g => g.id));
                     
@@ -2541,7 +2661,8 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
             `Supprimer le stagiaire ${traineeName}?`,
             `Toutes les données de ce stagiaire seront supprimées définitivement. Cette action est irréversible.`,
             () => {
-                setAllData(prevData => ({
+                // FIX: Added explicit 'TrainingData' type to the state updater argument to resolve a TypeScript error.
+                setAllData((prevData: TrainingData) => ({
                     ...prevData,
                     trainees: prevData.trainees.filter(t => t.id !== traineeId)
                 }));
@@ -2551,38 +2672,43 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
     };
     
     const handleArchive = () => {
-        if (!window.confirm(`Êtes-vous sûr de vouloir archiver l'année ${currentYear} ? Cette action est irréversible.`)) {
-            return;
-        }
+        openConfirmModal(
+            `Archiver l'année ${currentYear}?`,
+            `Cette action va sauvegarder toutes les données de l'année ${currentYear} et vous permettra de démarrer une nouvelle année de formation. L'action est irréversible.`,
+            () => {
+                const newYearName = window.prompt("Veuillez entrer le nom de la nouvelle année de formation (ex: 2024-2025):");
+                if (!newYearName || !/^\d{4}-\d{4}$/.test(newYearName)) {
+                    alert("Format de l'année invalide. Veuillez utiliser le format AAAA-AAAA.");
+                    closeConfirmModal();
+                    return;
+                }
 
-        const newYearName = window.prompt("Veuillez entrer le nom de la nouvelle année de formation (ex: 2024-2025):");
-        if (!newYearName || !/^\d{4}-\d{4}$/.test(newYearName)) {
-            alert("Format de l'année invalide. Veuillez utiliser le format AAAA-AAAA.");
-            return;
-        }
+                const currentYearGroups = allData.groups.filter(g => g.trainingYear === currentYear);
+                const currentYearGroupIds = new Set(currentYearGroups.map(g => g.id));
+                const currentYearTrainees = allData.trainees.filter(t => currentYearGroupIds.has(t.groupId));
 
-        const currentYearGroups = allData.groups.filter(g => g.trainingYear === currentYear);
-        const currentYearGroupIds = new Set(currentYearGroups.map(g => g.id));
-        const currentYearTrainees = allData.trainees.filter(t => currentYearGroupIds.has(t.groupId));
+                const dataToArchive: TrainingData = {
+                    levels: allData.levels,
+                    filieres: allData.filieres,
+                    groups: currentYearGroups,
+                    trainees: currentYearTrainees,
+                };
 
-        const dataToArchive: TrainingData = {
-            levels: allData.levels,
-            filieres: allData.filieres,
-            groups: currentYearGroups,
-            trainees: currentYearTrainees,
-        };
-
-        setArchived(prev => ({ ...prev, [currentYear]: dataToArchive }));
-        
-        setAllData(prev => ({
-            ...prev,
-            groups: prev.groups.filter(g => g.trainingYear !== currentYear),
-            trainees: prev.trainees.filter(t => !currentYearGroupIds.has(t.groupId)),
-        }));
-        
-        setCurrentTrainingYear(newYearName);
-        
-        alert(`L'année ${currentYear} a été archivée. Vous travaillez maintenant sur la nouvelle année : ${newYearName}.`);
+                setArchived({ ...archived, [currentYear]: dataToArchive });
+                
+                // FIX: Added explicit 'TrainingData' type to the state updater argument to resolve a TypeScript error.
+                setAllData((prev: TrainingData) => ({
+                    ...prev,
+                    groups: prev.groups.filter(g => g.trainingYear !== currentYear),
+                    trainees: prev.trainees.filter(t => !currentYearGroupIds.has(t.groupId)),
+                }));
+                
+                setCurrentTrainingYear(newYearName);
+                
+                alert(`L'année ${currentYear} a été archivée. Vous travaillez maintenant sur la nouvelle année : ${newYearName}.`);
+                closeConfirmModal();
+            }
+        );
     };
 
     return (
@@ -2596,7 +2722,7 @@ const DataView = ({ allData, setAllData, trainingYears, archived, setArchived, c
                 <p>{confirmModal.message}</p>
             </ConfirmationModal>
 
-            {currentUser.role === 'superAdmin' && (
+            {currentUser.role === 'sup_admin' && (
                 <div className="border-b pb-4">
                     <div className="flex justify-between items-center">
                         <h2 className="text-xl font-bold flex items-center gap-2"><ClipboardListIcon/> Informations Générales</h2>
@@ -2961,8 +3087,8 @@ const RecapitulatifModal = ({ isOpen, onClose, allYearsData, recapData, establis
 const HistoryView = ({ allYearsData, establishmentInfo, setAllData, setArchivedData, setCurrentTrainingYear, currentTrainingYear }: { 
     allYearsData: ArchivedData & { [key: string]: TrainingData },
     establishmentInfo: { name: string, logo: string | null },
-    setAllData: React.Dispatch<React.SetStateAction<TrainingData>>,
-    setArchivedData: React.Dispatch<React.SetStateAction<ArchivedData>>,
+    setAllData: (data: TrainingData | ((prevState: TrainingData) => TrainingData)) => void,
+    setArchivedData: (data: ArchivedData | ((prevState: ArchivedData) => ArchivedData)) => void,
     setCurrentTrainingYear: (year: string) => void,
     currentTrainingYear: string,
 }) => {
@@ -3062,7 +3188,8 @@ const HistoryView = ({ allYearsData, establishmentInfo, setAllData, setArchivedD
             return;
         }
 
-        setAllData(prevAllData => {
+        // FIX: Added explicit 'TrainingData' type to the state updater argument to resolve a TypeScript error.
+        setAllData((prevAllData: TrainingData) => {
             // De-duplicate levels and filieres by ID to avoid conflicts
             const mergedLevels = [...prevAllData.levels];
             const existingLevelIds = new Set(mergedLevels.map(l => l.id));
@@ -3090,7 +3217,8 @@ const HistoryView = ({ allYearsData, establishmentInfo, setAllData, setArchivedD
             };
         });
 
-        setArchivedData(prevArchived => {
+        // FIX: Added explicit 'ArchivedData' type to the state updater argument to resolve a TypeScript error.
+        setArchivedData((prevArchived: ArchivedData) => {
             const newArchived = { ...prevArchived };
             delete newArchived[yearToRestore];
             return newArchived;
@@ -3253,40 +3381,97 @@ const HistoryView = ({ allYearsData, establishmentInfo, setAllData, setArchivedD
 };
 
 // --- ADMIN VIEW ---
-const AdminView = ({ users, setUsers }: { users: any[], setUsers: (users: any[]) => void }) => {
+const AdminView = ({ assistants, setAssistants, currentUser }: { assistants: Assistant[], setAssistants: (users: Assistant[]) => void, currentUser: User }) => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void}>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
-    const assistants = users.filter(u => u.role === 'assistant');
-
-    const handleAddAssistant = (e: React.FormEvent) => {
+    const handleAddAssistant = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
-        if (users.some(u => u.email === email)) {
+        if (assistants.some(u => u.email === email)) {
             setError("Un utilisateur avec cet email existe déjà.");
             return;
         }
 
-        const newAssistant = { name, email, password, role: 'assistant' };
-        setUsers([...users, newAssistant]);
+        // Create user in Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: {
+                    full_name: name
+                }
+            }
+        });
 
-        // Reset form
-        setName('');
-        setEmail('');
-        setPassword('');
+        if (authError) {
+            setError(authError.message);
+            return;
+        }
+
+        if (authData.user) {
+            // Create user in public.users table
+            const { error: dbError } = await supabase.from('users').insert({
+                id: authData.user.id,
+                email: authData.user.email,
+                role: 'admin_assistant',
+                establishment_id: currentUser.establishment_id
+            });
+            
+            if (dbError) {
+                setError(dbError.message);
+                 // TODO: Maybe delete the auth user if this fails
+                return;
+            }
+            
+            setAssistants([...assistants, { id: authData.user.id, name, email, role: 'admin_assistant' }]);
+
+            // Reset form
+            setName('');
+            setEmail('');
+            setPassword('');
+        }
     };
 
-    const handleDeleteAssistant = (emailToDelete: string) => {
-        if(window.confirm(`Êtes-vous sûr de vouloir supprimer l'administrateur assistant ${emailToDelete} ?`)) {
-            setUsers(users.filter(u => u.email !== emailToDelete));
-        }
+    const handleDeleteAssistant = (assistantToDelete: Assistant) => {
+        openConfirmModal(
+            `Supprimer l'assistant ${assistantToDelete.name}?`,
+            `Cette action supprimera le compte de ${assistantToDelete.email}. Cette action est irréversible.`,
+            async () => {
+                const { error } = await supabase.from('users').delete().eq('id', assistantToDelete.id);
+                if (error) {
+                    alert(`Erreur lors de la suppression: ${error.message}`);
+                } else {
+                    setAssistants(assistants.filter(a => a.id !== assistantToDelete.id));
+                }
+                closeConfirmModal();
+            }
+        );
+    };
+
+    const openConfirmModal = (title: string, message: string, onConfirm: () => void) => {
+        setConfirmModal({ isOpen: true, title, message, onConfirm });
+    };
+
+    const closeConfirmModal = () => {
+        setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: () => {} });
     };
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-lg">
+             <ConfirmationModal
+                isOpen={confirmModal.isOpen}
+                onClose={closeConfirmModal}
+                onConfirm={confirmModal.onConfirm}
+                title={confirmModal.title}
+            >
+                <p>{confirmModal.message}</p>
+            </ConfirmationModal>
+
             <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2"><AdminIcon/> Gestion des Administrateurs</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Form Section */}
@@ -3321,7 +3506,7 @@ const AdminView = ({ users, setUsers }: { users: any[], setUsers: (users: any[])
                                     <p className="font-semibold text-gray-800">{assistant.name}</p>
                                     <p className="text-sm text-gray-500">{assistant.email}</p>
                                 </div>
-                                <button onClick={() => handleDeleteAssistant(assistant.email)} className="text-red-500 hover:text-red-700" title="Supprimer">
+                                <button onClick={() => handleDeleteAssistant(assistant)} className="text-red-500 hover:text-red-700" title="Supprimer">
                                     <DeleteIcon/>
                                 </button>
                             </div>

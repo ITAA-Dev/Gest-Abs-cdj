@@ -53,9 +53,17 @@ export interface ArchivedData {
 }
 
 export interface User {
+  id: string; // Supabase auth user ID
   email: string;
-  name: string;
-  role: 'superAdmin' | 'assistant';
-  password?: string;
+  name?: string;
   picture?: string;
+  role: 'sup_admin' | 'admin_assistant'; // Role from public.users table
+  establishment_id: string; // From public.users table
+}
+
+export interface Assistant {
+    id: string;
+    email: string;
+    name: string;
+    role: 'admin_assistant';
 }
