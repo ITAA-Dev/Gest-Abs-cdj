@@ -1,7 +1,7 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import AuthCallback from './AuthCallback';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -9,8 +9,15 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+
+const path = window.location.pathname;
+
+if (path.startsWith('/auth/callback')) {
+    root.render(<AuthCallback />);
+} else {
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
+}
