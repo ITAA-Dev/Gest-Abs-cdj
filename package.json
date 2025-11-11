@@ -1,7 +1,6 @@
-{
+﻿{
   "name": "gest-absence-pi",
   "type": "module",
-  "version": "1.0.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -10,12 +9,9 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@supabase/supabase-js": "^2.38.0",
-    "react-router-dom": "^6.20.1"
+    "@supabase/supabase-js": "^2.38.0"
   },
   "devDependencies": {
-    "@types/react": "^18.2.37",
-    "@types/react-dom": "^18.2.15",
     "@vitejs/plugin-react": "^4.1.1",
     "vite": "^4.5.0"
   }

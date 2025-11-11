@@ -4,13 +4,15 @@ import { supabase, signInWithGoogle } from './supabaseClient';
 
 const GoogleIcon = () => <svg className="w-5 h-5" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 381.5 512 244 512 110.3 512 0 398.8 0 261.8 0 127.3 105.8 16.3 244 16.3c67.7 0 120.3 26.1 166.3 69.6l-67.8 65.7c-24.6-23.3-58.4-38-98.5-38-74.9 0-136.6 61.2-136.6 137.2 0 75.9 61.7 137.2 136.6 137.2 88.5 0 113.1-66.8 116.5-98.2H244v-75.5h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path></svg>;
 
-const AppLogo = () => (
-    <svg className="h-12 w-auto text-white" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+const LogoEpresence = () => (
+    <svg className="h-12 w-auto text-white" viewBox="0 0 225 60" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M30 60C13.4315 60 0 46.5685 0 30C0 13.4315 13.4315 0 30 0V60Z" fill="currentColor" opacity="0.5"/>
         <path d="M30 0C46.5685 0 60 13.4315 60 30C60 46.5685 46.5685 60 30 60V0Z" fill="currentColor"/>
+        <text x="75" y="42" fontFamily="system-ui, sans-serif" fontSize="36" fontWeight="bold" fill="white">
+            E-Presence
+        </text>
     </svg>
 );
-
 
 const SpinnerIcon = () => (
     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -61,15 +63,10 @@ export const Auth = () => {
             <div className="relative flex-1 p-8 md:p-12 bg-blue-800 text-white rounded-t-2xl md:rounded-l-2xl md:rounded-r-none">
                 <div className="flex flex-col justify-between h-full">
                     <div>
-                        <div className="flex items-center gap-4">
-                           <AppLogo />
-                            <div>
-                                <h1 className="text-3xl font-bold">E-Presence</h1>
-                                <p className="text-lg text-blue-200 font-light tracking-wide">Solution Digitale</p>
-                            </div>
-                        </div>
-                        <p className="mt-8 text-blue-200">
-                            Bienvenue. Votre outil pour une gestion simple et efficace des présences.
+                        <LogoEpresence />
+                        <h1 className="text-4xl font-bold mt-6">Bienvenue</h1>
+                        <p className="mt-2 text-blue-200">
+                            Votre solution digitale pour une gestion simple et efficace des présences.
                         </p>
                     </div>
                     <p className="text-sm text-blue-300 mt-8">© {new Date().getFullYear()} E-Presence. Tous droits réservés.</p>
