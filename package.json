@@ -1,5 +1,7 @@
 {
-  "name": "gest-absence-pi",
+  "name": "gestionnaire-d'absences-stagiaires-log-2-v2",
+  "private": true,
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -7,12 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "@supabase/supabase-js": "^2.38.0"
+    "react-dom": "^19.2.0",
+    "react": "^19.2.0",
+    "@google/genai": "^1.27.0",
+    "@supabase/supabase-js": "^2.45.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.1.1",
-    "vite": "^4.5.0"
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
   }
 }
